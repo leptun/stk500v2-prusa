@@ -104,9 +104,9 @@ LICENSE:
 #define LCD_HD44780_ANIMATION
 #define LCD_HD44780_COUNTER
 // Dual serial support
-#define DUALSERIAL
+// #define DUALSERIAL
 // EINSY board
-#define EINSYBOARD
+// #define EINSYBOARD
 
 
 #include	<inttypes.h>
