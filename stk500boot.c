@@ -106,7 +106,7 @@ LICENSE:
 // Dual serial support
 // #define DUALSERIAL
 // EINSY board
-// #define EINSYBOARD
+#define EINSYBOARD
 
 
 #include	<inttypes.h>
