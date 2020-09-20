@@ -152,7 +152,7 @@ static unsigned char PrevCmdInvolvedAddressCounter=0;
 static unsigned char ActiveDisplay=1;
 #endif
 
-static inline void lcd_e_port_low()
+static inline void lcd_e_port_low(void)
 {
   #if (LCD_DISPLAYS>1)
   switch (ActiveDisplay)
@@ -175,7 +175,7 @@ static inline void lcd_e_port_low()
   #endif
 }
 
-static inline void lcd_e_port_high()
+static inline void lcd_e_port_high(void)
 {
   #if (LCD_DISPLAYS>1)
   switch (ActiveDisplay)
@@ -198,7 +198,7 @@ static inline void lcd_e_port_high()
   #endif
 }
 
-static inline void lcd_e_ddr_low()
+static inline void lcd_e_ddr_low(void)
 {
   #if (LCD_DISPLAYS>1)
   switch (ActiveDisplay)
@@ -221,7 +221,7 @@ static inline void lcd_e_ddr_low()
   #endif
 }
 
-static inline void lcd_e_ddr_high()
+static inline void lcd_e_ddr_high(void)
 {
   #if (LCD_DISPLAYS>1)
   switch (ActiveDisplay)
@@ -376,7 +376,7 @@ static uint8_t lcd_read(uint8_t rs)
     return data;
   }
 
-uint8_t lcd_getc()
+uint8_t lcd_getc(void)
   {
     return lcd_read(1);
   }
@@ -502,7 +502,7 @@ Clear screen
 Input:    none
 Returns:  none
 *************************************************************************/
-void lcd_clrscr()
+void lcd_clrscr(void)
   {
     lcd_command(1<<LCD_CLR);
   }
@@ -513,7 +513,7 @@ Return home
 Input:    none
 Returns:  none
 *************************************************************************/
-void lcd_home()
+void lcd_home(void)
   {
     lcd_command(1<<LCD_HOME);
   }
@@ -562,7 +562,7 @@ Initialize display
 Input:    none
 Returns:  none
 *************************************************************************/
-void lcd_init()
+void lcd_init(void)
   {
     //Set All Pins as Output
     lcd_e_ddr_high();
