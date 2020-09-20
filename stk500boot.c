@@ -762,7 +762,7 @@ int main(void)
 						if (boot_app_flags & BOOT_APP_FLG_FLASH)
 							word = pgm_read_word_far(boot_src_addr); //from FLASH
 						else
-							word = *((uint16_t*)boot_src_addr); //from RAM
+							word = *((uint16_t*)((uint16_t)boot_src_addr)); //from RAM
 						boot_page_fill(address, word);
 						address	+= 2;
 						boot_src_addr += 2;
