@@ -625,7 +625,7 @@ static unsigned char recchar_timeout(void)
 }
 
 #ifdef DUALSERIAL
-void initUart()
+void initUart(void)
 {
 	// init uart0
 	UART_STATUS_REG0	|=	(1 <<UART_DOUBLE_SPEED0);
@@ -638,15 +638,6 @@ void initUart()
 }
 #endif //DUALSERIAL
 
-/*void sendHello() {
-	sendchar('H');
-	sendchar('e');
-	sendchar('l');
-	sendchar('l');
-	sendchar('o');
-	sendchar('!');
-	sendchar('\n');
-}*/
 
 #ifdef EINSYBOARD
 
@@ -661,7 +652,7 @@ void blinkBootLed(int state)
 //Heaters off (PG5=0, PE5=0)
 //Fans on (PH5=1, PH3=1)
 //Motors off (PA4..7=1)
-void pinsToDefaultState()
+void pinsToDefaultState(void)
 {
 /*
     DDRG = 0b00001000;
