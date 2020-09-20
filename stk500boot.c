@@ -985,12 +985,15 @@ int main(void)
 						else
 						{
 							// Read EEPROM
+							uint16_t ii = address >> 1;
 							do {
-								EEARL = address;			// Setup EEPROM address
-								EEARH = ((address >> 8));
-								address++;					// Select next EEPROM byte
-								EECR |= (1<<EERE);			// Read EEPROM
-								*p++ = EEDR;				// Send EEPROM data
+								EEARL	=	ii;			// Setup EEPROM address
+								EEARH	=	((ii >> 8));
+								address += 2; // Select next EEPROM byte
+								ii++;
+
+								EECR	|=	(1<<EERE);			// Read EEPROM
+								*p++	=	EEDR;				// Send EEPROM data
 								size--;
 							} while (size);
 						}
