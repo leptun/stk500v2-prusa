@@ -245,10 +245,9 @@ void jumpToUserSpace(void)
 
 
 //*****************************************************************************
-void delay_ms(unsigned int timedelay)
+void delay_ms(uint16_t timedelay)
 {
-	unsigned int i;
-	for (i=0;i<timedelay;i++)
+	for (uint16_t i = 0; i < timedelay; i++)
 	{
 		_delay_ms(0.5);
 	}
@@ -291,7 +290,7 @@ static uint8_t Serial_Available(uint8_t serial)
 
 #define	MAX_TIME_COUNT (F_CPU >> 1)
 //*****************************************************************************
-static unsigned char recchar_timeout(void)
+static uint8_t recchar_timeout(void)
 {
 	uint32_t count = 0;
 	while (1)
@@ -303,7 +302,7 @@ static unsigned char recchar_timeout(void)
 		count++;
 		if (count > MAX_TIME_COUNT)
 		{
-		unsigned int	data;
+		uint16_t data;
 		#if (FLASHEND > 0x10000)
 			data	=	pgm_read_word_far(0);	//*	get the first word of the user program
 		#else
@@ -387,10 +386,10 @@ int main(void)
 	address_t address = 0;
 	address_t eraseAddress = 0;
 	uint8_t msgParseState;
-	unsigned int ii = 0;
+	uint16_t ii = 0;
 	uint8_t checksum = 0;
 	uint8_t seqNum = 0;
-	unsigned int msgLength = 0;
+	uint16_t msgLength = 0;
 	uint8_t msgBuffer[285];
 	uint8_t c;
 	uint8_t* p;
@@ -516,7 +515,7 @@ int main(void)
 		boot_state++; // ( if boot_state=1 bootloader received byte from UART, enter bootloader mode)
 	}
 
-	int messageShown = 0;
+	uint8_t messageShown = 0;
 
 	if (boot_state==1)
 	{
@@ -536,9 +535,7 @@ int main(void)
 				}
 				else
 				{
-				//	c	=	recchar();
 					c	=	recchar_timeout();
-					
 				}
 
 
@@ -647,7 +644,7 @@ int main(void)
 					lcd_goto(87);
 					lcd_puts("verify ");
 				}
-				int progress = 100 * flashCounter / flashSize;
+				uint8_t progress = 100 * flashCounter / flashSize;
 				char text[4] = "   ";
 				for (int i = 2; i >= 0; i--)
 					if (progress > 0)
@@ -671,12 +668,12 @@ int main(void)
 	#ifndef REMOVE_CMD_SPI_MULTI
 				case CMD_SPI_MULTI:
 					{
-						unsigned char answerByte;
-						unsigned char flag=0;
+						uint8_t answerByte;
+						uint8_t flag=0;
 
 						if ( msgBuffer[4]== 0x30 )
 						{
-							unsigned char signatureIndex	=	msgBuffer[6];
+							uint8_t signatureIndex	=	msgBuffer[6];
 
 							if ( signatureIndex == 0 )
 							{
@@ -744,7 +741,7 @@ int main(void)
 
 				case CMD_GET_PARAMETER:
 					{
-						unsigned char value;
+						uint8_t value;
 
 						switch(msgBuffer[1])
 						{
@@ -785,8 +782,8 @@ int main(void)
 
 				case CMD_READ_SIGNATURE_ISP:
 					{
-						unsigned char signatureIndex	=	msgBuffer[4];
-						unsigned char signature;
+						uint8_t signatureIndex	=	msgBuffer[4];
+						uint8_t signature;
 
 						if ( signatureIndex == 0 )
 							signature = SIGNATURE_0;
@@ -811,7 +808,7 @@ int main(void)
 
 				case CMD_READ_FUSE_ISP:
 					{
-						unsigned char fuseBits;
+						uint8_t fuseBits;
 
 						if ( msgBuffer[2] == 0x50 )
 						{
@@ -834,7 +831,7 @@ int main(void)
 	#ifndef REMOVE_PROGRAM_LOCK_BIT_SUPPORT
 				case CMD_PROGRAM_LOCK_ISP:
 					{
-						unsigned char lockBits	=	msgBuffer[4];
+						uint8_t lockBits	=	msgBuffer[4];
 
 						lockBits	=	(~lockBits) & 0x3C;	// mask BLBxx bits
 						boot_lock_bits_set(lockBits);		// and program it
@@ -855,10 +852,8 @@ int main(void)
 							boot_page_erase(eraseAddress);	// Perform page erase
 							boot_spm_busy_wait();		// Wait until the memory is erased.
 							eraseAddress += SPM_PAGESIZE;	// point to next page to be erase
-							delay_ms(10);
 						}
 						msgBuffer[1]	=	STATUS_CMD_OK;
-						// msgBuffer[1]	=	STATUS_CMD_FAILED;	//*	issue 543, return FAILED instead of OK
 					}
 					break;
 
@@ -873,10 +868,10 @@ int main(void)
 					break;
 
 				case CMD_SET_UPLOAD_SIZE_PRUSA3D:
-					((unsigned char*)&flashSize)[0] = msgBuffer[1];
-					((unsigned char*)&flashSize)[1] = msgBuffer[2];
-					((unsigned char*)&flashSize)[2] = msgBuffer[3];
-					((unsigned char*)&flashSize)[3] = 0;
+					((uint8_t*)&flashSize)[0] = msgBuffer[1];
+					((uint8_t*)&flashSize)[1] = msgBuffer[2];
+					((uint8_t*)&flashSize)[2] = msgBuffer[3];
+					((uint8_t*)&flashSize)[3] = 0;
 					msgLength		=	2;
 					msgBuffer[1]	=	STATUS_CMD_OK;
 					break;
@@ -884,11 +879,11 @@ int main(void)
 				case CMD_PROGRAM_FLASH_ISP:
 				case CMD_PROGRAM_EEPROM_ISP:
 					{
-						unsigned int	size	=	((msgBuffer[1])<<8) | msgBuffer[2];
-						unsigned char	*p	=	msgBuffer+10;
-						unsigned int	data;
-						unsigned char	highByte, lowByte;
-						address_t		tempaddress	=	address;
+						uint16_t size = ((msgBuffer[1])<<8) | msgBuffer[2];
+						uint8_t *p = msgBuffer+10;
+						uint16_t data;
+						uint8_t highByte, lowByte;
+						address_t tempaddress = address;
 
 
 						if ( msgBuffer[0] == CMD_PROGRAM_FLASH_ISP )
@@ -953,11 +948,11 @@ int main(void)
 				case CMD_READ_FLASH_ISP:
 				case CMD_READ_EEPROM_ISP:
 					{
-						unsigned int	size	=	((msgBuffer[1])<<8) | msgBuffer[2];
-						unsigned char	*p		=	msgBuffer+1;
-						msgLength				=	size+3;
+						uint16_t size = ((msgBuffer[1])<<8) | msgBuffer[2];
+						uint8_t *p = msgBuffer+1;
+						msgLength = size+3;
 
-						*p++	=	STATUS_CMD_OK;
+						*p++ = STATUS_CMD_OK;
 						if (msgBuffer[0] == CMD_READ_FLASH_ISP )
 						{
 							if (flashSize != 0)
@@ -971,68 +966,66 @@ int main(void)
 									flashCounter += size; //add size to counter
 							}
 
-							unsigned int data;
+							uint16_t data;
 
 							// Read FLASH
 							do {
 						//#if defined(RAMPZ)
 						#if (FLASHEND > 0x10000)
-								data	=	pgm_read_word_far(address);
+								data = pgm_read_word_far(address);
 						#else
-								data	=	pgm_read_word_near(address);
+								data = pgm_read_word_near(address);
 						#endif
-								*p++	=	(unsigned char)data;		//LSB
-								*p++	=	(unsigned char)(data >> 8);	//MSB
-								address	+=	2;							// Select next word in memory
-								size	-=	2;
+								*p++ = (uint8_t)data;		//LSB
+								*p++ = (uint8_t)(data >> 8);	//MSB
+								address += 2;							// Select next word in memory
+								size -= 2;
 							}while (size);
 						}
 						else
 						{
-							/* Read EEPROM */
+							// Read EEPROM
 							do {
-								EEARL	=	address;			// Setup EEPROM address
-								EEARH	=	((address >> 8));
+								EEARL = address;			// Setup EEPROM address
+								EEARH = ((address >> 8));
 								address++;					// Select next EEPROM byte
-								EECR	|=	(1<<EERE);			// Read EEPROM
-								*p++	=	EEDR;				// Send EEPROM data
+								EECR |= (1<<EERE);			// Read EEPROM
+								*p++ = EEDR;				// Send EEPROM data
 								size--;
 							} while (size);
 						}
-						*p++	=	STATUS_CMD_OK;
+						*p++ = STATUS_CMD_OK;
 					}
 					break;
 
 				default:
-					msgLength		=	2;
-					msgBuffer[1]	=	STATUS_CMD_FAILED;
+					msgLength = 2;
+					msgBuffer[1] = STATUS_CMD_FAILED;
 					break;
 			}
 
-			/*
-			 * Now send answer message back
-			 */
+			// Now send answer message back
 			sendchar(MESSAGE_START);
-			checksum	=	MESSAGE_START^0;
+			checksum = MESSAGE_START^0;
 
 			sendchar(seqNum);
-			checksum	^=	seqNum;
+			checksum ^= seqNum;
 
-			c			=	((msgLength>>8)&0xFF);
+			c = ((msgLength>>8)&0xFF);
 			sendchar(c);
-			checksum	^=	c;
+			checksum ^= c;
 
-			c			=	msgLength&0x00FF;
+			c = msgLength&0x00FF;
 			sendchar(c);
 			checksum ^= c;
 
 			sendchar(TOKEN);
 			checksum ^= TOKEN;
 
-			p	=	msgBuffer;
+			p = msgBuffer;
 			while ( msgLength )
 			{
-				c	=	*p++;
+				c = *p++;
 				sendchar(c);
 				checksum ^=c;
 				msgLength--;
@@ -1051,8 +1044,8 @@ int main(void)
 
 
 #ifndef REMOVE_BOOTLOADER_LED
-	PROGLED_DDR		&=	~(1<<PROGLED_PIN);	// set to default
-	PROGLED_PORT	&=	~(1<<PROGLED_PIN);	// set to default
+	PROGLED_DDR &= ~(1<<PROGLED_PIN);	// set to default
+	PROGLED_PORT &= ~(1<<PROGLED_PIN);	// set to default
 	delay_ms(100);							// delay after exit
 #endif
 
