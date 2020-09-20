@@ -493,36 +493,7 @@ void delay_ms(unsigned int timedelay)
 		_delay_ms(0.5);
 	}
 }
-/*
-void lcd_print_hex_nibble(uint8_t val)
-{
-	lcd_putc((val > 9)?('A' + val - 10):('0' + val));
-}
 
-void lcd_print_hex_byte(uint8_t val)
-{
-	lcd_print_hex_nibble(val >> 4);
-	lcd_print_hex_nibble(val & 0xf);
-}
-
-void lcd_print_hex_word(uint16_t val)
-{
-	lcd_print_hex_byte(val >> 8);
-	lcd_print_hex_byte(val & 0xff);
-}
-
-void lcd_print_hex_dword(uint32_t val)
-{
-	lcd_print_hex_word(val >> 16);
-	lcd_print_hex_word(val & 0xffff);
-}
-/**/
-/*
-const unsigned long ulFlashEnd = FLASHEND;
-const unsigned long ulRamEnd = RAMEND;
-const unsigned long ulBootSize = BOOTSIZE;
-const unsigned long ulAppEnd = APP_END;
-*/
 //*****************************************************************************
 /*
  * send single byte to USART, wait until transmission is completed
