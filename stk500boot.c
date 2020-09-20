@@ -693,7 +693,7 @@ void pinsToDefaultState()
 	address_t flashAddressLast = 0; //last written flash address
 	int flashOperation = 0; //current flash operation (0-nothing, 1-write, 2-verify)
 
-#define RAMSIZE        0x2000
+#define RAMSIZE        (RAMEND - RAMSTART + 1)
 #define boot_src_addr  (*((uint32_t*)(RAMSIZE - 16)))
 #define boot_dst_addr  (*((uint32_t*)(RAMSIZE - 12)))
 #define boot_copy_size (*((uint16_t*)(RAMSIZE - 8)))
@@ -703,7 +703,8 @@ void pinsToDefaultState()
 #define BOOT_APP_FLG_ERASE 0x01
 #define BOOT_APP_FLG_COPY  0x02
 #define BOOT_APP_FLG_FLASH 0x04
-	
+#define BOOT_APP_FLG_RUN   0x08 //!< Do not jump to application immediately
+
 
 //*****************************************************************************
 int main(void)
@@ -719,9 +720,9 @@ int main(void)
 	unsigned char	c, *p;
 	unsigned char   isLeave = 0;
 
-	unsigned long	boot_timeout;
-	unsigned long	boot_timer;
-	unsigned int	boot_state;
+	unsigned long	boot_timeout = 20000ul; // should be about 1 second
+	unsigned long	boot_timer = 0;
+	uint8_t boot_state = 0;
 
 	//*	some chips dont set the stack properly
 // this is already done in __jumpMain
@@ -749,9 +750,9 @@ int main(void)
 	{
 		if (boot_app_magic == 0x55aa55aa)
 		{
-///			uint16_t tmp_boot_copy_size = boot_copy_size;
-///			uint32_t tmp_boot_src_addr = boot_src_addr;
-
+			if (boot_app_flags & BOOT_APP_FLG_RUN)
+				goto start;
+			
 			address = boot_dst_addr;
 			address_t pageAddress = address;
 			while (boot_copy_size)
@@ -792,28 +793,15 @@ int main(void)
 						boot_copy_size = 0;
 				}
 			}
-///			boot_copy_size = tmp_boot_copy_size;
-///			boot_src_addr = tmp_boot_src_addr;
 
 		}
 		goto exit;
-// original implementation app_start() does not work
-//		app_start();
 	}
+	start:
 	//************************************************************************
 #endif
 
 
-	boot_timer	=	0;
-	boot_state	=	0;
-
-#ifdef BLINK_LED_WHILE_WAITING
-//	boot_timeout	=	 90000;		//*	should be about 4 seconds
-//	boot_timeout	=	170000;
-	boot_timeout	=	 20000;		//*	should be about 1 second
-#else
-	boot_timeout	=	3500000; // 7 seconds , approx 2us per step when optimize "s"
-#endif
 	/*
 	 * Branch to bootloader or application code ?
 	 */
