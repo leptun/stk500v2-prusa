@@ -88,17 +88,6 @@ LICENSE:
 //*	Jan  1,	2012	<MLS> Issue 544: stk500v2 bootloader doesn't support reading fuses
 //************************************************************************
 
-//************************************************************************
-//*	these are used to test issues
-//*	http://code.google.com/p/arduino/issues/detail?id=505
-//*	Reported by mark.stubbs, Mar 14, 2011
-//*	The STK500V2 bootloader is comparing the seqNum to 1 or the current sequence 
-//*	(IE: Requiring the sequence to be 1 or match seqNum before continuing).  
-//*	The correct behavior is for the STK500V2 to accept the PC's sequence number, and echo it back for the reply message.
-#define	_FIX_ISSUE_505_
-//************************************************************************
-//*	Issue 181: added watch dog timmer support
-#define	_FIX_ISSUE_181_
 // LCD startup screen and boot animation
 #define LCD_HD44780
 #define LCD_HD44780_ANIMATION
@@ -108,11 +97,13 @@ LICENSE:
 // EINSY board
 #define EINSYBOARD
 
+//************************************************************************
 
 #include	<inttypes.h>
 #include	<avr/io.h>
 #include	<avr/interrupt.h>
 #include	<avr/boot.h>
+#include	<avr/wdt.h>
 #include	<avr/pgmspace.h>
 #include	<util/delay.h>
 #include	<avr/eeprom.h>
@@ -124,304 +115,72 @@ LICENSE:
 #endif
 
 
-#ifndef EEWE
-	#define EEWE    1
-#endif
-#ifndef EEMWE
-	#define EEMWE   2
-#endif
+#define BLINK_LED_WHILE_WAITING
+#define UART_BAUDRATE_DOUBLE_SPEED 1
 
-
-
-/*
- * Uncomment the following lines to save code space
- */
-//#define	REMOVE_PROGRAM_LOCK_BIT_SUPPORT		// disable program lock bits
-//#define	REMOVE_BOOTLOADER_LED				// no LED to show active bootloader
-//#define	REMOVE_CMD_SPI_MULTI				// disable processing of SPI_MULTI commands, Remark this line for AVRDUDE <Worapoht>
-//
-
-
-
-//************************************************************************
-//*	LED on pin "PROGLED_PIN" on port "PROGLED_PORT"
-//*	indicates that bootloader is active
-//*	PG2 -> LED on Wiring board
-//************************************************************************
-#define		BLINK_LED_WHILE_WAITING
-
-#ifdef _MEGA_BOARD_
-	#define PROGLED_PORT	PORTB
-	#define PROGLED_DDR		DDRB
-	#define PROGLED_PIN		PINB7
-#elif defined( _BOARD_AMBER128_ )
-	//*	this is for the amber 128 http://www.soc-robotics.com/
-	//*	onbarod led is PORTE4
-	#define PROGLED_PORT	PORTD
-	#define PROGLED_DDR		DDRD
-	#define PROGLED_PIN		PINE7
-#elif defined( _CEREBOTPLUS_BOARD_ ) || defined(_CEREBOT_II_BOARD_)
-	//*	this is for the Cerebot 2560 board and the Cerebot-ii
-	//*	onbarod leds are on PORTE4-7
-	#define PROGLED_PORT	PORTE
-	#define PROGLED_DDR		DDRE
-	#define PROGLED_PIN		PINE7
-#elif defined( _PENGUINO_ )
-	//*	this is for the Penguino
-	//*	onbarod led is PORTE4
-	#define PROGLED_PORT	PORTC
-	#define PROGLED_DDR		DDRC
-	#define PROGLED_PIN		PINC6
-#elif defined( _ANDROID_2561_ ) || defined( __AVR_ATmega2561__ )
-	//*	this is for the Boston Android 2561
-	//*	onbarod led is PORTE4
-	#define PROGLED_PORT	PORTA
-	#define PROGLED_DDR		DDRA
-	#define PROGLED_PIN		PINA3
-#elif defined( _BOARD_MEGA16 )
-	//*	onbarod led is PORTA7
-	#define PROGLED_PORT	PORTA
-	#define PROGLED_DDR		DDRA
-	#define PROGLED_PIN		PINA7
-	#define UART_BAUDRATE_DOUBLE_SPEED 0
-
-#elif defined( _BOARD_BAHBOT_ )
-	//*	dosent have an onboard LED but this is what will probably be added to this port
-	#define PROGLED_PORT	PORTB
-	#define PROGLED_DDR		DDRB
-	#define PROGLED_PIN		PINB0
-
-#elif defined( _BOARD_ROBOTX_ )
-	#define PROGLED_PORT	PORTB
-	#define PROGLED_DDR		DDRB
-	#define PROGLED_PIN		PINB6
-#elif defined( _BOARD_CUSTOM1284_BLINK_B0_ )
-	#define PROGLED_PORT	PORTB
-	#define PROGLED_DDR		DDRB
-	#define PROGLED_PIN		PINB0
-#elif defined( _BOARD_CUSTOM1284_ )
-	#define PROGLED_PORT	PORTD
-	#define PROGLED_DDR		DDRD
-	#define PROGLED_PIN		PIND5
-#elif defined( _AVRLIP_ )
-	#define PROGLED_PORT	PORTB
-	#define PROGLED_DDR		DDRB
-	#define PROGLED_PIN		PINB5
-#elif defined( _BOARD_STK500_ )
-	#define PROGLED_PORT	PORTA
-	#define PROGLED_DDR		DDRA
-	#define PROGLED_PIN		PINA7
-#elif defined( _BOARD_STK502_ )
-	#define PROGLED_PORT	PORTB
-	#define PROGLED_DDR		DDRB
-	#define PROGLED_PIN		PINB5
-#elif defined( _BOARD_STK525_ )
-	#define PROGLED_PORT	PORTB
-	#define PROGLED_DDR		DDRB
-	#define PROGLED_PIN		PINB7
-#else
-	#define PROGLED_PORT	PORTG
-	#define PROGLED_DDR		DDRG
-	#define PROGLED_PIN		PING2
-#endif
-
-
-
-/*
- * define CPU frequency in Mhz here if not defined in Makefile
- */
-#ifndef F_CPU
-	#define F_CPU 16000000UL
-#endif
-
-#define	_BLINK_LOOP_COUNT_	(F_CPU / 2250)
-/*
- * UART Baudrate, AVRStudio AVRISP only accepts 115200 bps
- */
 
 #ifndef BAUDRATE
 	#define BAUDRATE 115200
 #endif
 
-/*
- *  Enable (1) or disable (0) USART double speed operation
- */
-#ifndef UART_BAUDRATE_DOUBLE_SPEED
-	#if defined (__AVR_ATmega32__)
-		#define UART_BAUDRATE_DOUBLE_SPEED 0
-	#else
-		#define UART_BAUDRATE_DOUBLE_SPEED 1
-	#endif
-#endif
 
-/*
- * HW and SW version, reported to AVRISP, must match version of AVRStudio
- */
+// Uncomment the following lines to save code space
+//#define	REMOVE_PROGRAM_LOCK_BIT_SUPPORT		// disable program lock bits
+//#define	REMOVE_BOOTLOADER_LED				// no LED to show active bootloader
+//#define	REMOVE_CMD_SPI_MULTI				// disable processing of SPI_MULTI commands, Remark this line for AVRDUDE <Worapoht>
+//
+
+//************************************************************************
+//*	LED on pin "PROGLED_PIN" on port "PROGLED_PORT"
+//*	indicates that bootloader is active
+//************************************************************************
+#define PROGLED_PORT	PORTB
+#define PROGLED_DDR		DDRB
+#define PROGLED_PIN		PINB7
+
+
+#define _BLINK_LOOP_COUNT_ (F_CPU / 2250)
+
+// HW and SW version, reported to AVRISP, must match version of AVRStudio
 #define CONFIG_PARAM_BUILD_NUMBER_LOW	0
 #define CONFIG_PARAM_BUILD_NUMBER_HIGH	0
 #define CONFIG_PARAM_HW_VER				0x0F
 #define CONFIG_PARAM_SW_MAJOR			2
 #define CONFIG_PARAM_SW_MINOR			0x0A
 
-/*
- * Calculate the address where the bootloader starts from FLASHEND and BOOTSIZE
- * (adjust BOOTSIZE below and BOOTLOADER_ADDRESS in Makefile if you want to change the size of the bootloader)
- */
-//#define BOOTSIZE 1024
-#if FLASHEND > 0x0F000
-	#define BOOTSIZE 8192
-#else
-	#define BOOTSIZE 2048
-#endif
 
-//#define APP_END  (FLASHEND -(2*BOOTSIZE) + 1)
-#define APP_END  (FLASHEND -(BOOTSIZE) + 1)
+#define	UART_BAUD_RATE_LOW			UBRR0L
+#define	UART_STATUS_REG				UCSR0A
+#define	UART_CONTROL_REG			UCSR0B
+#define	UART_ENABLE_TRANSMITTER		TXEN0
+#define	UART_ENABLE_RECEIVER		RXEN0
+#define	UART_TRANSMIT_COMPLETE		TXC0
+#define	UART_RECEIVE_COMPLETE		RXC0
+#define	UART_DATA_REG				UDR0
+#define	UART_DOUBLE_SPEED			U2X0
 
-/*
- * Signature bytes are not available in avr-gcc io_xxx.h
- */
-#if defined (__AVR_ATmega8__)
-	#define SIGNATURE_BYTES 0x1E9307
-#elif defined (__AVR_ATmega16__)
-	#define SIGNATURE_BYTES 0x1E9403
-#elif defined (__AVR_ATmega32__)
-	#define SIGNATURE_BYTES 0x1E9502
-#elif defined (__AVR_ATmega8515__)
-	#define SIGNATURE_BYTES 0x1E9306
-#elif defined (__AVR_ATmega8535__)
-	#define SIGNATURE_BYTES 0x1E9308
-#elif defined (__AVR_ATmega162__)
-	#define SIGNATURE_BYTES 0x1E9404
-#elif defined (__AVR_ATmega128__)
-	#define SIGNATURE_BYTES 0x1E9702
-#elif defined (__AVR_ATmega1280__)
-	#define SIGNATURE_BYTES 0x1E9703
-#elif defined (__AVR_ATmega2560__)
-	#define SIGNATURE_BYTES 0x1E9801
-#elif defined (__AVR_ATmega2561__)
-	#define SIGNATURE_BYTES 0x1e9802
-#elif defined (__AVR_ATmega1284P__)
-	#define SIGNATURE_BYTES 0x1e9705
-#elif defined (__AVR_ATmega640__)
-	#define SIGNATURE_BYTES  0x1e9608
-#elif defined (__AVR_ATmega64__)
-	#define SIGNATURE_BYTES  0x1E9602
-#elif defined (__AVR_ATmega169__)
-	#define SIGNATURE_BYTES  0x1e9405
-#elif defined (__AVR_AT90USB1287__)
-	#define SIGNATURE_BYTES  0x1e9782
-#else
-	#error "no signature definition for MCU available"
-#endif
+#ifdef DUALSERIAL
+// Secondary UART defines
+#define	UART_BAUD_RATE_LOW1			UBRR1L
+#define	UART_STATUS_REG1			UCSR1A
+#define	UART_CONTROL_REG1			UCSR1B
+#define	UART_ENABLE_TRANSMITTER1	TXEN1
+#define	UART_ENABLE_RECEIVER1		RXEN1
+#define	UART_TRANSMIT_COMPLETE1		TXC1
+#define	UART_RECEIVE_COMPLETE1		RXC1
+#define	UART_DATA_REG1				UDR1
+#define	UART_DOUBLE_SPEED1			U2X1
+#endif //DUALSERIAL
 
-
-#if defined(_BOARD_ROBOTX_) || defined(__AVR_AT90USB1287__) || defined(__AVR_AT90USB1286__)
-	#define	UART_BAUD_RATE_LOW			UBRR1L
-	#define	UART_STATUS_REG				UCSR1A
-	#define	UART_CONTROL_REG			UCSR1B
-	#define	UART_ENABLE_TRANSMITTER		TXEN1
-	#define	UART_ENABLE_RECEIVER		RXEN1
-	#define	UART_TRANSMIT_COMPLETE		TXC1
-	#define	UART_RECEIVE_COMPLETE		RXC1
-	#define	UART_DATA_REG				UDR1
-	#define	UART_DOUBLE_SPEED			U2X1
-
-#elif defined(__AVR_ATmega8__) || defined(__AVR_ATmega16__) || defined(__AVR_ATmega32__) \
-	|| defined(__AVR_ATmega8515__) || defined(__AVR_ATmega8535__)
-	/* ATMega8 with one USART */
-	#define	UART_BAUD_RATE_LOW			UBRRL
-	#define	UART_STATUS_REG				UCSRA
-	#define	UART_CONTROL_REG			UCSRB
-	#define	UART_ENABLE_TRANSMITTER		TXEN
-	#define	UART_ENABLE_RECEIVER		RXEN
-	#define	UART_TRANSMIT_COMPLETE		TXC
-	#define	UART_RECEIVE_COMPLETE		RXC
-	#define	UART_DATA_REG				UDR
-	#define	UART_DOUBLE_SPEED			U2X
-
-#elif defined(__AVR_ATmega64__) || defined(__AVR_ATmega128__) || defined(__AVR_ATmega162__) \
-	 || defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__) || defined(__AVR_ATmega2561__)
-	/* ATMega with two USART, use UART0 */
-	#define	UART_BAUD_RATE_LOW			UBRR0L
-	#define	UART_STATUS_REG				UCSR0A
-	#define	UART_CONTROL_REG			UCSR0B
-	#define	UART_ENABLE_TRANSMITTER		TXEN0
-	#define	UART_ENABLE_RECEIVER		RXEN0
-	#define	UART_TRANSMIT_COMPLETE		TXC0
-	#define	UART_RECEIVE_COMPLETE		RXC0
-	#define	UART_DATA_REG				UDR0
-	#define	UART_DOUBLE_SPEED			U2X0
-#elif defined(UBRR0L) && defined(UCSR0A) && defined(TXEN0)
-	/* ATMega with two USART, use UART0 */
-	#define	UART_BAUD_RATE_LOW			UBRR0L
-	#define	UART_STATUS_REG				UCSR0A
-	#define	UART_CONTROL_REG			UCSR0B
-	#define	UART_ENABLE_TRANSMITTER		TXEN0
-	#define	UART_ENABLE_RECEIVER		RXEN0
-	#define	UART_TRANSMIT_COMPLETE		TXC0
-	#define	UART_RECEIVE_COMPLETE		RXC0
-	#define	UART_DATA_REG				UDR0
-	#define	UART_DOUBLE_SPEED			U2X0
-#elif defined(UBRRL) && defined(UCSRA) && defined(UCSRB) && defined(TXEN) && defined(RXEN)
-	//* catch all
-	#define	UART_BAUD_RATE_LOW			UBRRL
-	#define	UART_STATUS_REG				UCSRA
-	#define	UART_CONTROL_REG			UCSRB
-	#define	UART_ENABLE_TRANSMITTER		TXEN
-	#define	UART_ENABLE_RECEIVER		RXEN
-	#define	UART_TRANSMIT_COMPLETE		TXC
-	#define	UART_RECEIVE_COMPLETE		RXC
-	#define	UART_DATA_REG				UDR
-	#define	UART_DOUBLE_SPEED			U2X
-#else
-	#error "no UART definition for MCU available"
-#endif
-
-
-/*
- * Macro to calculate UBBR from XTAL and baudrate
- */
-#if defined(__AVR_ATmega32__) && UART_BAUDRATE_DOUBLE_SPEED
-	#define UART_BAUD_SELECT(baudRate,xtalCpu) ((xtalCpu / 4 / baudRate - 1) / 2)
-#elif defined(__AVR_ATmega32__)
-	#define UART_BAUD_SELECT(baudRate,xtalCpu) ((xtalCpu / 8 / baudRate - 1) / 2)
-#elif UART_BAUDRATE_DOUBLE_SPEED
+// Macro to calculate UBBR from XTAL and baudrate
+#if UART_BAUDRATE_DOUBLE_SPEED
 	#define UART_BAUD_SELECT(baudRate,xtalCpu) (((float)(xtalCpu))/(((float)(baudRate))*8.0)-1.0+0.5)
 #else
 	#define UART_BAUD_SELECT(baudRate,xtalCpu) (((float)(xtalCpu))/(((float)(baudRate))*16.0)-1.0+0.5)
 #endif
 
-#ifdef DUALSERIAL
 
-// UART defines
-#define	UART_BAUD_RATE_LOW0			UBRR0L
-#define	UART_STATUS_REG0			UCSR0A
-#define	UART_CONTROL_REG0			UCSR0B
-#define	UART_ENABLE_TRANSMITTER0	TXEN0
-#define	UART_ENABLE_RECEIVER0		RXEN0
-#define	UART_TRANSMIT_COMPLETE0		TXC0
-#define	UART_RECEIVE_COMPLETE0		RXC0
-#define	UART_DATA_REG0				UDR0
-#define	UART_DOUBLE_SPEED0			U2X0
-
-#define	UART_BAUD_RATE_LOW2			UBRR2L
-#define	UART_STATUS_REG2			UCSR2A
-#define	UART_CONTROL_REG2			UCSR2B
-#define	UART_ENABLE_TRANSMITTER2	TXEN2
-#define	UART_ENABLE_RECEIVER2		RXEN2
-#define	UART_TRANSMIT_COMPLETE2		TXC2
-#define	UART_RECEIVE_COMPLETE2		RXC2
-#define	UART_DATA_REG2				UDR2
-#define	UART_DOUBLE_SPEED2			U2X2
-
-#endif //DUALSERIAL
-
-
-#define UART_BAUD_SELECT(baudRate,xtalCpu) (((float)(xtalCpu))/(((float)(baudRate))*8.0)-1.0+0.5)
-
-/*
- * States used in the receive state machine
- */
+// States used in the receive state machine
 #define	ST_START		0
 #define	ST_GET_SEQ_NUM	1
 #define ST_MSG_SIZE_1	2
@@ -431,24 +190,18 @@ LICENSE:
 #define	ST_GET_CHECK	6
 #define	ST_PROCESS		7
 
-/*
- * use 16bit address variable for ATmegas with <= 64K flash
- */
+
+// Use 16bit address variable for ATmegas with <= 64K flash
 #if defined(RAMPZ)
 	typedef uint32_t address_t;
 #else
 	typedef uint16_t address_t;
 #endif
 
-/*
- * function prototypes
- */
-static void sendchar(char c);
-//static unsigned char recchar(void);
 
-#ifdef DUALSERIAL
-int selectedSerial;
-#endif //DUALSERIAL
+static void sendchar(char c);
+
+uint8_t selectedSerial = 0;
 
 /*
  * since this bootloader is not linked against the avr-gcc crt1 functions,
@@ -457,8 +210,6 @@ int selectedSerial;
 void __jumpMain	(void) __attribute__ ((naked)) __attribute__ ((section (".init9")));
 #include <avr/sfr_defs.h>
 
-//#define	SPH_REG	0x3E
-//#define	SPL_REG	0x3D
 
 #define STACK_TOP (RAMEND - 16)
 
@@ -483,6 +234,15 @@ void __jumpMain(void)
 	asm volatile ( "jmp main");												// jump to main()
 }
 
+void jumpToUserSpace(void)
+{
+	asm volatile(
+		"clr	r30		\n\t"
+		"clr	r31		\n\t"
+		"ijmp	\n\t"
+		);
+}
+
 
 //*****************************************************************************
 void delay_ms(unsigned int timedelay)
@@ -500,79 +260,46 @@ void delay_ms(unsigned int timedelay)
  */
 static void sendchar(char c)
 {
-#ifdef DUALSERIAL
 	if (selectedSerial == 0)
 	{
-		UART_DATA_REG0 = c;												// prepare transmission
-		while (!(UART_STATUS_REG0 & (1 << UART_TRANSMIT_COMPLETE0)));	// wait until byte sent
-		UART_STATUS_REG0 |= (1 << UART_TRANSMIT_COMPLETE0);				// delete TXCflag
+		UART_DATA_REG = c;												// prepare transmission
+		while (!(UART_STATUS_REG & (1 << UART_TRANSMIT_COMPLETE)));		// wait until byte sent
+		UART_STATUS_REG |= (1 << UART_TRANSMIT_COMPLETE);				// delete TXCflag
 	}
-	else if (selectedSerial == 2)
+#ifdef DUALSERIAL
+	else if (selectedSerial == 1)
 	{
-		UART_DATA_REG2 = c;												// prepare transmission
-		while (!(UART_STATUS_REG2 & (1 << UART_TRANSMIT_COMPLETE2)));	// wait until byte sent
-		UART_STATUS_REG2 |= (1 << UART_TRANSMIT_COMPLETE2);				// delete TXCflag
+		UART_DATA_REG1 = c;												// prepare transmission
+		while (!(UART_STATUS_REG1 & (1 << UART_TRANSMIT_COMPLETE1)));	// wait until byte sent
+		UART_STATUS_REG1 |= (1 << UART_TRANSMIT_COMPLETE1);				// delete TXCflag
 	}
-#else //DUALSERIAL
-	UART_DATA_REG	=	c;										// prepare transmission
-	while (!(UART_STATUS_REG & (1 << UART_TRANSMIT_COMPLETE)));	// wait until byte sent
-	UART_STATUS_REG |= (1 << UART_TRANSMIT_COMPLETE);			// delete TXCflag
 #endif //DUALSERIAL
 }
-
 
 //************************************************************************
-#ifdef DUALSERIAL
-static int Serial_Available(int serial)
+
+static uint8_t Serial_Available(uint8_t serial)
 {
 	if (serial == 0)
-		return (UART_STATUS_REG0 & (1 << UART_RECEIVE_COMPLETE0));	// wait for data
-	else if (serial == 2)
-		return (UART_STATUS_REG2 & (1 << UART_RECEIVE_COMPLETE2));	// wait for data
-	return 0;
-}
-#else //DUALSERIAL
-static int	Serial_Available(void)
-{
-	return (UART_STATUS_REG & (1 << UART_RECEIVE_COMPLETE));	// wait for data
-}
-#endif //DUALSERIAL
-
-
-//*****************************************************************************
-/*
- * Read single byte from USART, block if no data available
- */
-/*static unsigned char recchar(void)
-{
+		return (UART_STATUS_REG & (1 << UART_RECEIVE_COMPLETE));	// wait for data
 #ifdef DUALSERIAL
-	if (selectedSerial == 0)
-	{
-		while (!(UART_STATUS_REG0 & (1 << UART_RECEIVE_COMPLETE0))) { } // wait for data
-		return UART_DATA_REG0;
-	}
-	else if (selectedSerial == 2)
-	{
-		while (!(UART_STATUS_REG2 & (1 << UART_RECEIVE_COMPLETE2))) { } // wait for data
-		return UART_DATA_REG2;
-	}
-	return 0;
-#else //DUALSERIAL
-	while (!(UART_STATUS_REG & (1 << UART_RECEIVE_COMPLETE))) { } // wait for data
-	return UART_DATA_REG;
+	else if (serial == 1)
+		return (UART_STATUS_REG1 & (1 << UART_RECEIVE_COMPLETE1));	// wait for data
 #endif //DUALSERIAL
-}*/
+	return 0;
+}
 
-#define	MAX_TIME_COUNT	(F_CPU >> 1)
+#define	MAX_TIME_COUNT (F_CPU >> 1)
 //*****************************************************************************
 static unsigned char recchar_timeout(void)
 {
 	uint32_t count = 0;
-#ifdef DUALSERIAL
 	while (1)
 	{
-		if ((selectedSerial == 0) && (UART_STATUS_REG0 & (1 << UART_RECEIVE_COMPLETE0))) break;
-		else if ((selectedSerial == 2) && (UART_STATUS_REG2 & (1 << UART_RECEIVE_COMPLETE2))) break;
+		if ((selectedSerial == 0) && (UART_STATUS_REG & (1 << UART_RECEIVE_COMPLETE))) break;
+#ifdef DUALSERIAL
+		else if ((selectedSerial == 1) && (UART_STATUS_REG1 & (1 << UART_RECEIVE_COMPLETE1))) break;
+#endif
 		count++;
 		if (count > MAX_TIME_COUNT)
 		{
@@ -584,86 +311,44 @@ static unsigned char recchar_timeout(void)
 		#endif
 			if (data != 0xffff)					//*	make sure its valid before jumping to it.
 			{
-				asm volatile(
-						"clr	r30		\n\t"
-						"clr	r31		\n\t"
-						"ijmp	\n\t"
-						);
+				jumpToUserSpace();
 			}
 			count	=	0;
 		}
 	}
-	if (selectedSerial == 0) return UART_DATA_REG0;
-	else if (selectedSerial == 2) return UART_DATA_REG2;
+	if (selectedSerial == 0) return UART_DATA_REG;
+#ifdef DUALSERIAL
+	else if (selectedSerial == 1) return UART_DATA_REG1;
+#endif
 	return 0;
-#else //DUALSERIAL
-	while (!(UART_STATUS_REG & (1 << UART_RECEIVE_COMPLETE)))
-	{
-		// wait for data
-		count++;
-		if (count > MAX_TIME_COUNT)
-		{
-		unsigned int	data;
-		#if (FLASHEND > 0x10000)
-			data	=	pgm_read_word_far(0);	//*	get the first word of the user program
-		#else
-			data	=	pgm_read_word_near(0);	//*	get the first word of the user program
-		#endif
-			if (data != 0xffff)					//*	make sure its valid before jumping to it.
-			{
-				asm volatile(
-						"clr	r30		\n\t"
-						"clr	r31		\n\t"
-						"ijmp	\n\t"
-						);
-			}
-			count	=	0;
-		}
-	}
-	return UART_DATA_REG;
-#endif //DUALSERIAL
 }
 
-#ifdef DUALSERIAL
 void initUart(void)
 {
 	// init uart0
-	UART_STATUS_REG0	|=	(1 <<UART_DOUBLE_SPEED0);
-	UART_BAUD_RATE_LOW0	=	UART_BAUD_SELECT(BAUDRATE,F_CPU);
-	UART_CONTROL_REG0	=	(1 << UART_ENABLE_RECEIVER0) | (1 << UART_ENABLE_TRANSMITTER0);
-	// init uart2
-	UART_STATUS_REG2	|=	(1 <<UART_DOUBLE_SPEED2);
-	UART_BAUD_RATE_LOW2	=	UART_BAUD_SELECT(BAUDRATE,F_CPU);
-	UART_CONTROL_REG2	=	(1 << UART_ENABLE_RECEIVER2) | (1 << UART_ENABLE_TRANSMITTER2);
-}
+#if UART_BAUDRATE_DOUBLE_SPEED
+	UART_STATUS_REG |= (1 <<UART_DOUBLE_SPEED);
+#endif
+	UART_BAUD_RATE_LOW = UART_BAUD_SELECT(BAUDRATE,F_CPU);
+	UART_CONTROL_REG = (1 << UART_ENABLE_RECEIVER) | (1 << UART_ENABLE_TRANSMITTER);
+
+#ifdef DUALSERIAL
+	// init uart1
+#if UART_BAUDRATE_DOUBLE_SPEED
+	UART_STATUS_REG1 |= (1 <<UART_DOUBLE_SPEED1);
+#endif
+	UART_BAUD_RATE_LOW1 = UART_BAUD_SELECT(BAUDRATE,F_CPU);
+	UART_CONTROL_REG1 = (1 << UART_ENABLE_RECEIVER1) | (1 << UART_ENABLE_TRANSMITTER1);
 #endif //DUALSERIAL
+}
 
 
 #ifdef EINSYBOARD
-
-void blinkBootLed(int state)
-{
-    if (state == 1)
-        PORTB = 0b10000000;
-    else
-        PORTB = 0b00000000;
-}
-
 //Heaters off (PG5=0, PE5=0)
 //Fans on (PH5=1, PH3=1)
 //Motors off (PA4..7=1)
 void pinsToDefaultState(void)
 {
-/*
-    DDRG = 0b00001000;
-    DDRE = 0b00001000;
-    DDRH = 0b00101000;
-    DDRA = 0b00011110;
-    DDRB = 0b10000000;
-    PORTH = 0b00101000;
-    PORTG = 0b00000000;
-    PORTE = 0b00000000;
-    PORTA = 0b00000000;*/ //original code
 	DDRA |= 0b11110000; //PA4..7 out
 	PORTA |= 0b11110000; //PA4..7 = 1
 	DDRE |= 0b00100000; //PE5 out
@@ -673,16 +358,15 @@ void pinsToDefaultState(void)
 	DDRH |= 0b00101000; //PH5, PH3 out
 	PORTH |= 0b00101000; //PH5, PH3 = 1
 }
-
 #endif //EINSYBOARD
 
 //*	for watch dog timer startup
 //void (*app_start)(void) = 0x0000;
 
-	unsigned long flashSize = 0; //flash data size in bytes
-	unsigned long flashCounter = 0; //flash counter (readed / written bytes)
-	address_t flashAddressLast = 0; //last written flash address
-	int flashOperation = 0; //current flash operation (0-nothing, 1-write, 2-verify)
+uint32_t flashSize = 0; //flash data size in bytes
+uint32_t flashCounter = 0; //flash counter (readed / written bytes)
+address_t flashAddressLast = 0; //last written flash address
+uint8_t flashOperation = 0; //current flash operation (0-nothing, 1-write, 2-verify)
 
 #define RAMSIZE        (RAMEND - RAMSTART + 1)
 #define boot_src_addr  (*((uint32_t*)(RAMSIZE - 16)))
@@ -700,42 +384,26 @@ void pinsToDefaultState(void)
 //*****************************************************************************
 int main(void)
 {
-	address_t		address			=	0;
-	address_t		eraseAddress	=	0;
-	unsigned char	msgParseState;
-	unsigned int	ii				=	0;
-	unsigned char	checksum		=	0;
-	unsigned char	seqNum			=	0;
-	unsigned int	msgLength		=	0;
-	unsigned char	msgBuffer[285];
-	unsigned char	c, *p;
-	unsigned char   isLeave = 0;
+	address_t address = 0;
+	address_t eraseAddress = 0;
+	uint8_t msgParseState;
+	unsigned int ii = 0;
+	uint8_t checksum = 0;
+	uint8_t seqNum = 0;
+	unsigned int msgLength = 0;
+	uint8_t msgBuffer[285];
+	uint8_t c;
+	uint8_t* p;
+	uint8_t isLeave = 0;
 
-	unsigned long	boot_timeout = 20000ul; // should be about 1 second
-	unsigned long	boot_timer = 0;
+	uint16_t boot_timeout = 20000ul; // should be about 1 second
+	uint16_t boot_timer = 0;
 	uint8_t boot_state = 0;
 
-	//*	some chips dont set the stack properly
-// this is already done in __jumpMain
-/*	asm volatile ( ".set __stack, %0" :: "i" (RAMEND) );
-	asm volatile ( "ldi	16, %0" :: "i" (RAMEND >> 8) );
-	asm volatile ( "out %0,16" :: "i" (AVR_STACK_POINTER_HI_ADDR) );
-	asm volatile ( "ldi	16, %0" :: "i" (RAMEND & 0x0ff) );
-	asm volatile ( "out %0,16" :: "i" (AVR_STACK_POINTER_LO_ADDR) );*/ 
-
-#ifdef _FIX_ISSUE_181_
-	//************************************************************************
-	//*	Dec 29,	2011	<MLS> Issue #181, added watch dog timmer support
-	//*	handle the watch dog timer
-	uint8_t	mcuStatusReg;
+	uint8_t mcuStatusReg;
 	mcuStatusReg	=	MCUSR;
-
-	__asm__ __volatile__ ("cli");
-	__asm__ __volatile__ ("wdr");
-	MCUSR	=	0;
-	WDTCSR	|=	_BV(WDCE) | _BV(WDE);
-	WDTCSR	=	0;
-	__asm__ __volatile__ ("sei");
+	MCUSR = 0;
+	wdt_disable();
 	// check if WDT generated the reset, if so, go straight to app
 	if (mcuStatusReg & _BV(WDRF))
 	{
@@ -789,17 +457,6 @@ int main(void)
 		goto exit;
 	}
 	start:
-	//************************************************************************
-#endif
-
-
-	/*
-	 * Branch to bootloader or application code ?
-	 */
-
-#ifdef DUALSERIAL
-	selectedSerial = 0;
-#endif //DUALSERIAL
 
 
 #ifndef REMOVE_BOOTLOADER_LED
@@ -810,113 +467,56 @@ int main(void)
 
 
 #endif
+
 	/*
 	 * Init UART
 	 * set baudrate and enable USART receiver and transmiter without interrupts
 	 */
-#if UART_BAUDRATE_DOUBLE_SPEED
-	UART_STATUS_REG		|=	(1 <<UART_DOUBLE_SPEED);
-#endif
-	UART_BAUD_RATE_LOW	=	UART_BAUD_SELECT(BAUDRATE,F_CPU);
-	UART_CONTROL_REG	=	(1 << UART_ENABLE_RECEIVER) | (1 << UART_ENABLE_TRANSMITTER);
-
-	asm volatile ("nop");			// wait until port has changed
+	initUart();
 
 #ifdef EINSYBOARD
-    pinsToDefaultState();
-    blinkBootLed(1);
+	pinsToDefaultState();
 #endif //EINSYBOARD
 
-#ifdef DUALSERIAL
-    initUart();
-#endif //DUALSERIAL
-
 #ifdef LCD_HD44780
-    lcd_init();
-    lcd_clrscr();
-    lcd_goto(0);
-/*	if (boot_app_magic == 0x55aa55aa)
-	{
-		lcd_print_hex_dword(boot_src_addr);
-		lcd_putc(' ');
-		lcd_print_hex_dword(boot_dst_addr);
-	    lcd_goto(42);
-		lcd_print_hex_word(boot_copy_size);
-		lcd_putc(' ');
-		lcd_print_hex_word(boot_app_flags);
-		lcd_putc(' ');
-		lcd_print_hex_dword(boot_app_magic);
-		boot_app_magic = 0x00000000;
-		while(1);
-	}*/
-/*	lcd_puts("B");
-    lcd_goto(21);
-    lcd_puts("Original Prusa i3");
-    lcd_goto(47);
-    lcd_puts("Prusa Research");*/
-    lcd_goto(65);
-    lcd_puts("Original Prusa i3");
-    lcd_goto(23);
-    lcd_puts("Prusa Research");
-//    lcd_goto(90);
-//	lcd_puts("boot...    ...");
-    lcd_goto(101);
+	lcd_init();
+	lcd_clrscr();
+	lcd_goto(65);
+	lcd_puts("Original Prusa i3");
+	lcd_goto(23);
+	lcd_puts("Prusa Research");
+	lcd_goto(101);
 	lcd_puts("...");
 
 #endif //LCD_HD44780
 
-
-#ifdef EINSYBOARD
-    blinkBootLed(0);
-#endif //EINSYBOARD
-
-    uint16_t animationTimer = 0;
-    uint16_t animationFrame = 0;
+	uint8_t animationTimer = 0;
+	uint8_t animationFrame = 0;
 
 
 	while (boot_state==0)
 	{
-#ifdef DUALSERIAL
-		while ((!(Serial_Available(0))) && (!(Serial_Available(2))) && (boot_state == 0))		// wait for data
+		while ((!(Serial_Available(0))) && (!(Serial_Available(1))) && (boot_state == 0))		// wait for data
 		{
 			_delay_ms(0.001);
 			boot_timer++;
 			if (boot_timer > boot_timeout)
 			{
-				boot_state	=	1; // (after ++ -> boot_state=2 bootloader timeout, jump to main 0x00000 )
+				boot_state = 1; // (after ++ -> boot_state=2 bootloader timeout, jump to main 0x00000 )
 			}
-		#ifdef BLINK_LED_WHILE_WAITING
+		#if defined(BLINK_LED_WHILE_WAITING) && !defined(REMOVE_BOOTLOADER_LED)
 			if ((boot_timer % _BLINK_LOOP_COUNT_) == 0)
 			{
-				//*	toggle the LED
-				PROGLED_PORT	^=	(1<<PROGLED_PIN);	// turn LED ON
+				PROGLED_PORT ^= (1 << PROGLED_PIN); // toggle the LED
 			}
 		#endif
 		}
-		if (Serial_Available(2))
-			selectedSerial = 2;
-#else //DUALSERIAL
-		while ((!(Serial_Available())) && (boot_state == 0))		// wait for data
-		{
-			_delay_ms(0.001);
-			boot_timer++;
-			if (boot_timer > boot_timeout)
-			{
-				boot_state	=	1; // (after ++ -> boot_state=2 bootloader timeout, jump to main 0x00000 )
-			}
-		#ifdef BLINK_LED_WHILE_WAITING
-			if ((boot_timer % _BLINK_LOOP_COUNT_) == 0)
-			{
-				//*	toggle the LED
-				PROGLED_PORT	^=	(1<<PROGLED_PIN);	// turn LED ON
-			}
-		#endif
-		}
-#endif //DUALSERIAL
+		if (Serial_Available(1))
+			selectedSerial = 1;
 		boot_state++; // ( if boot_state=1 bootloader received byte from UART, enter bootloader mode)
 	}
 
-    int messageShown = 0;
+	int messageShown = 0;
 
 	if (boot_state==1)
 	{
@@ -953,22 +553,9 @@ int main(void)
 						break;
 
 					case ST_GET_SEQ_NUM:
-					#ifdef _FIX_ISSUE_505_
 						seqNum			=	c;
 						msgParseState	=	ST_MSG_SIZE_1;
 						checksum		^=	c;
-					#else
-						if ( (c == 1) || (c == seqNum) )
-						{
-							seqNum			=	c;
-							msgParseState	=	ST_MSG_SIZE_1;
-							checksum		^=	c;
-						}
-						else
-						{
-							msgParseState	=	ST_START;
-						}
-					#endif
 						break;
 
 					case ST_MSG_SIZE_1:
@@ -1093,15 +680,15 @@ int main(void)
 
 							if ( signatureIndex == 0 )
 							{
-								answerByte	=	(SIGNATURE_BYTES >> 16) & 0x000000FF;
+								answerByte = SIGNATURE_0;
 							}
 							else if ( signatureIndex == 1 )
 							{
-								answerByte	=	(SIGNATURE_BYTES >> 8) & 0x000000FF;
+								answerByte = SIGNATURE_1;
 							}
 							else
 							{
-								answerByte	=	SIGNATURE_BYTES & 0x000000FF;
+								answerByte = SIGNATURE_2;
 							}
 						}
 						else if ( msgBuffer[4] & 0x50 )
@@ -1202,11 +789,11 @@ int main(void)
 						unsigned char signature;
 
 						if ( signatureIndex == 0 )
-							signature	=	(SIGNATURE_BYTES >>16) & 0x000000FF;
+							signature = SIGNATURE_0;
 						else if ( signatureIndex == 1 )
-							signature	=	(SIGNATURE_BYTES >> 8) & 0x000000FF;
+							signature = SIGNATURE_1;
 						else
-							signature	=	SIGNATURE_BYTES & 0x000000FF;
+							signature = SIGNATURE_2;
 
 						msgLength		=	4;
 						msgBuffer[1]	=	STATUS_CMD_OK;
@@ -1260,10 +847,19 @@ int main(void)
 					break;
 	#endif
 				case CMD_CHIP_ERASE_ISP:
-					eraseAddress	=	0;
-					msgLength		=	2;
-				//	msgBuffer[1]	=	STATUS_CMD_OK;
-					msgBuffer[1]	=	STATUS_CMD_FAILED;	//*	isue 543, return FAILED instead of OK
+					{
+						eraseAddress = 0;
+						msgLength = 2;
+						while (eraseAddress < BOOTLOADER_ADDRESS)
+						{
+							boot_page_erase(eraseAddress);	// Perform page erase
+							boot_spm_busy_wait();		// Wait until the memory is erased.
+							eraseAddress += SPM_PAGESIZE;	// point to next page to be erase
+							delay_ms(10);
+						}
+						msgBuffer[1]	=	STATUS_CMD_OK;
+						// msgBuffer[1]	=	STATUS_CMD_FAILED;	//*	issue 543, return FAILED instead of OK
+					}
 					break;
 
 				case CMD_LOAD_ADDRESS:
@@ -1311,13 +907,13 @@ int main(void)
 							}
 
 							// erase only main section (bootloader protection)
-							if (eraseAddress < APP_END ) //erase and write only blocks with address less 0x3e000
+							if (eraseAddress < BOOTLOADER_ADDRESS ) //erase and write only blocks with address less 0x3e000
 							{ //because prevent "brick"
 									boot_page_erase(eraseAddress);	// Perform page erase
 									boot_spm_busy_wait();		// Wait until the memory is erased.
 									eraseAddress += SPM_PAGESIZE;	// point to next page to be erase
 							}
-							if (address < APP_END)
+							if (address < BOOTLOADER_ADDRESS)
 							{
 								/* Write FLASH */
 								do {
@@ -1445,8 +1041,7 @@ int main(void)
 			seqNum++;
 	
 		#ifndef REMOVE_BOOTLOADER_LED
-			//*	<MLS>	toggle the LED
-			PROGLED_PORT	^=	(1<<PROGLED_PIN);	// active high LED ON
+			PROGLED_PORT ^= (1<<PROGLED_PIN); // toggle the LED
 		#endif
 
 		}
@@ -1457,31 +1052,23 @@ int main(void)
 
 #ifndef REMOVE_BOOTLOADER_LED
 	PROGLED_DDR		&=	~(1<<PROGLED_PIN);	// set to default
-	PROGLED_PORT	&=	~(1<<PROGLED_PIN);	// active low LED OFF
-//	PROGLED_PORT	|=	(1<<PROGLED_PIN);	// active high LED OFf
+	PROGLED_PORT	&=	~(1<<PROGLED_PIN);	// set to default
 	delay_ms(100);							// delay after exit
 #endif
 
 exit:
-	asm volatile ("nop");			// wait until port has changed
+	// Now leave bootloader
 
-	/*
-	 * Now leave bootloader
-	 */
+#if UART_BAUDRATE_DOUBLE_SPEED
+	UART_STATUS_REG &= ~(1 << UART_DOUBLE_SPEED);
+#ifdef DUALSERIAL
+	UART_STATUS_REG1 &= ~(1 << UART_DOUBLE_SPEED1);
+#endif
+#endif
 
-	UART_STATUS_REG	&=	0xfd;
+
 	boot_rww_enable();				// enable application section
-
-
-	asm volatile(
-			"clr	r30		\n\t"
-			"clr	r31		\n\t"
-			"ijmp	\n\t"
-			);
-//	asm volatile ( "push r1" "\n\t"		// Jump to Reset vector in Application Section
-//					"push r1" "\n\t"
-//					"ret"	 "\n\t"
-//					::);
+	jumpToUserSpace();
 
 	 /*
 	 * Never return to stop GCC to generate exit return code
@@ -1490,23 +1077,3 @@ exit:
 	 */
 	for(;;);
 }
-
-/*
-base address = f800
-
-avrdude: Device signature = 0x1e9703
-avrdude: safemode: lfuse reads as FF
-avrdude: safemode: hfuse reads as DA
-avrdude: safemode: efuse reads as F5
-avrdude>
-
-
-base address = f000
-avrdude: Device signature = 0x1e9703
-avrdude: safemode: lfuse reads as FF
-avrdude: safemode: hfuse reads as D8
-avrdude: safemode: efuse reads as F5
-avrdude>
-*/
-
-//************************************************************************

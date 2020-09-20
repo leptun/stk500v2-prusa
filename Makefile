@@ -51,7 +51,7 @@ F_CPU = 16000000
 # 0xFC00*2=0x1F800 for ATmega128  1024 words Boot Size
 # 0xF800*2=0x1F000 for ATmega1280
 # 0xF000*2=0x1E000 for ATmega1280
-BOOTLOADER_ADDRESS = 3E000
+BOOTLOADER_ADDRESS = 0x3E000
 
 
 # Output format. (can be srec, ihex, binary)
@@ -105,7 +105,7 @@ CSTANDARD = -std=gnu99
 
 
 # Place -D or -U options here
-CDEFS = -DF_CPU=$(F_CPU)UL
+CDEFS = -DF_CPU=$(F_CPU)UL -DBOOTLOADER_ADDRESS=$(BOOTLOADER_ADDRESS)
 
 
 # Place -I options here
@@ -336,7 +336,7 @@ ALL_ASFLAGS = -mmcu=$(MCU) -I. -x assembler-with-cpp $(ASFLAGS)
 #	Jul 6,	2010	<MLS> Adding 2560 support
 mega2560:	MCU = atmega2560
 mega2560:	F_CPU = 16000000
-mega2560:	BOOTLOADER_ADDRESS = 3E000
+mega2560:	BOOTLOADER_ADDRESS = 0x3E000
 mega2560:	CFLAGS += -D_MEGA_BOARD_
 mega2560:	begin gccversion sizebefore build sizeafter end 
 			mv $(TARGET).hex stk500boot_v2_mega2560.hex
