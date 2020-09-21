@@ -885,14 +885,7 @@ int main(void)
 									flashCounter += size; //add size to counter
 								flashAddressLast = address;
 							}
-
-							// erase only main section (bootloader protection)
-							// if (eraseAddress < BOOTLOADER_ADDRESS ) //erase and write only blocks with address less 0x3e000
-							// { //because prevent "brick"
-								// boot_page_erase(eraseAddress); // Perform page erase
-								// boot_spm_busy_wait(); // Wait until the memory is erased.
-								// eraseAddress += SPM_PAGESIZE; // point to next page to be erase
-							// }
+							
 							if (address < BOOTLOADER_ADDRESS)
 							{
 								uint8_t skipFlash = 1;
@@ -931,7 +924,7 @@ int main(void)
 										data = (highByte << 8) | lowByte;
 										boot_page_fill(address,data);
 
-										address = address + 2; // Select next word in memory
+										address += 2; // Select next word in memory
 										size -= 2; // Reduce number of bytes to write by two
 									} while (size); // Loop until all bytes written
 
