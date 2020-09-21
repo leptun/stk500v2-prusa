@@ -909,6 +909,7 @@ int main(void)
 										{
 											boot_page_erase(address); // Perform page erase
 											boot_spm_busy_wait(); // Wait until the memory is erased.
+											eraseAddress = address + SPM_PAGESIZE;
 										}
 										break;
 									}
