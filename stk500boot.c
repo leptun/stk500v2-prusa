@@ -99,19 +99,19 @@ LICENSE:
 
 //************************************************************************
 
-#include	<inttypes.h>
-#include	<avr/io.h>
-#include	<avr/interrupt.h>
-#include	<avr/boot.h>
-#include	<avr/wdt.h>
-#include	<avr/pgmspace.h>
-#include	<util/delay.h>
-#include	<avr/eeprom.h>
-#include	<avr/common.h>
-#include	"command.h"
+#include <inttypes.h>
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <avr/boot.h>
+#include <avr/wdt.h>
+#include <avr/pgmspace.h>
+#include <util/delay.h>
+#include <avr/eeprom.h>
+#include <avr/common.h>
+#include "command.h"
 
 #ifdef LCD_HD44780
-#include    "lcd.h"
+#include "lcd.h"
 #endif
 
 
@@ -125,18 +125,18 @@ LICENSE:
 
 
 // Uncomment the following lines to save code space
-//#define	REMOVE_PROGRAM_LOCK_BIT_SUPPORT		// disable program lock bits
-//#define	REMOVE_BOOTLOADER_LED				// no LED to show active bootloader
-//#define	REMOVE_CMD_SPI_MULTI				// disable processing of SPI_MULTI commands, Remark this line for AVRDUDE <Worapoht>
-//
+//#define	REMOVE_PROGRAM_LOCK_BIT_SUPPORT // disable program lock bits
+//#define	REMOVE_BOOTLOADER_LED // no LED to show active bootloader
+//#define	REMOVE_CMD_SPI_MULTI // disable processing of SPI_MULTI commands, Remark this line for AVRDUDE <Worapoht>
 
 //************************************************************************
 //*	LED on pin "PROGLED_PIN" on port "PROGLED_PORT"
 //*	indicates that bootloader is active
 //************************************************************************
-#define PROGLED_PORT	PORTB
-#define PROGLED_DDR		DDRB
-#define PROGLED_PIN		PINB7
+#define PROGLED_PORT PORTB
+#define PROGLED_RPORT PINB
+#define PROGLED_DDR DDRB
+#define PROGLED_PIN PINB7
 
 
 #define _BLINK_LOOP_COUNT_ (F_CPU / 2250)
@@ -192,7 +192,7 @@ LICENSE:
 
 
 // Use 16bit address variable for ATmegas with <= 64K flash
-#if defined(RAMPZ)
+#if (FLASHEND > 0x10000)
 	typedef uint32_t address_t;
 #else
 	typedef uint16_t address_t;
@@ -203,10 +203,9 @@ static void sendchar(char c);
 
 uint8_t selectedSerial = 0;
 
-/*
- * since this bootloader is not linked against the avr-gcc crt1 functions,
- * to reduce the code size, we need to provide our own initialization
- */
+
+// since this bootloader is not linked against the avr-gcc crt1 functions,
+// to reduce the code size, we need to provide our own initialization
 void __jumpMain	(void) __attribute__ ((naked)) __attribute__ ((section (".init9")));
 #include <avr/sfr_defs.h>
 
@@ -216,30 +215,25 @@ void __jumpMain	(void) __attribute__ ((naked)) __attribute__ ((section (".init9"
 //*****************************************************************************
 void __jumpMain(void)
 {
-//*	July 17, 2010	<MLS> Added stack pointer initialzation
-//*	the first line did not do the job on the ATmega128
+	asm volatile (".set __stack, %0" :: "i" (STACK_TOP));
 
-	asm volatile ( ".set __stack, %0" :: "i" (STACK_TOP) );
+	asm volatile ("ldi 16, %0" :: "i" (STACK_TOP >> 8)); // set stack pointer to top of RAM
+	asm volatile ("out %0,16" :: "i" (AVR_STACK_POINTER_HI_ADDR));
 
-//*	set stack pointer to top of RAM
+	asm volatile ("ldi 16, %0" :: "i" (STACK_TOP & 0x0ff));
+	asm volatile ("out %0,16" :: "i" (AVR_STACK_POINTER_LO_ADDR));
 
-	asm volatile ( "ldi	16, %0" :: "i" (STACK_TOP >> 8) );
-	asm volatile ( "out %0,16" :: "i" (AVR_STACK_POINTER_HI_ADDR) );
-
-	asm volatile ( "ldi	16, %0" :: "i" (STACK_TOP & 0x0ff) );
-	asm volatile ( "out %0,16" :: "i" (AVR_STACK_POINTER_LO_ADDR) );
-
-	asm volatile ( "clr __zero_reg__" );									// GCC depends on register r1 set to 0
-	asm volatile ( "out %0, __zero_reg__" :: "I" (_SFR_IO_ADDR(SREG)) );	// set SREG to 0
-	asm volatile ( "jmp main");												// jump to main()
+	asm volatile ("clr __zero_reg__" ); // GCC depends on register r1 set to 0
+	asm volatile ("out %0, __zero_reg__" :: "I" (_SFR_IO_ADDR(SREG))); // set SREG to 0
+	asm volatile ("jmp main"); // jump to main()
 }
 
 void jumpToUserSpace(void)
 {
 	asm volatile(
-		"clr	r30		\n\t"
-		"clr	r31		\n\t"
-		"ijmp	\n\t"
+		"clr r30 \n\t"
+		"clr r31 \n\t"
+		"ijmp \n\t"
 		);
 }
 
@@ -254,23 +248,21 @@ void delay_ms(uint16_t timedelay)
 }
 
 //*****************************************************************************
-/*
- * send single byte to USART, wait until transmission is completed
- */
+// send single byte to USART, wait until transmission is completed
 static void sendchar(char c)
 {
 	if (selectedSerial == 0)
 	{
-		UART_DATA_REG = c;												// prepare transmission
-		while (!(UART_STATUS_REG & (1 << UART_TRANSMIT_COMPLETE)));		// wait until byte sent
-		UART_STATUS_REG |= (1 << UART_TRANSMIT_COMPLETE);				// delete TXCflag
+		UART_DATA_REG = c; // prepare transmission
+		while (!(UART_STATUS_REG & _BV(UART_TRANSMIT_COMPLETE))); // wait until byte sent
+		UART_STATUS_REG |= _BV(UART_TRANSMIT_COMPLETE); // delete TXCflag
 	}
 #ifdef DUALSERIAL
 	else if (selectedSerial == 1)
 	{
-		UART_DATA_REG1 = c;												// prepare transmission
-		while (!(UART_STATUS_REG1 & (1 << UART_TRANSMIT_COMPLETE1)));	// wait until byte sent
-		UART_STATUS_REG1 |= (1 << UART_TRANSMIT_COMPLETE1);				// delete TXCflag
+		UART_DATA_REG1 = c; // prepare transmission
+		while (!(UART_STATUS_REG1 & _BV(UART_TRANSMIT_COMPLETE1))); // wait until byte sent
+		UART_STATUS_REG1 |= _BV(UART_TRANSMIT_COMPLETE1); // delete TXCflag
 	}
 #endif //DUALSERIAL
 }
@@ -280,10 +272,10 @@ static void sendchar(char c)
 static uint8_t Serial_Available(uint8_t serial)
 {
 	if (serial == 0)
-		return (UART_STATUS_REG & (1 << UART_RECEIVE_COMPLETE));	// wait for data
+		return (UART_STATUS_REG & _BV(UART_RECEIVE_COMPLETE)); // wait for data
 #ifdef DUALSERIAL
 	else if (serial == 1)
-		return (UART_STATUS_REG1 & (1 << UART_RECEIVE_COMPLETE1));	// wait for data
+		return (UART_STATUS_REG1 & _BV(UART_RECEIVE_COMPLETE1)); // wait for data
 #endif //DUALSERIAL
 	return 0;
 }
@@ -295,29 +287,33 @@ static uint8_t recchar_timeout(void)
 	uint32_t count = 0;
 	while (1)
 	{
-		if ((selectedSerial == 0) && (UART_STATUS_REG & (1 << UART_RECEIVE_COMPLETE))) break;
+		if ((selectedSerial == 0) && Serial_Available(0))
+			break;
 #ifdef DUALSERIAL
-		else if ((selectedSerial == 1) && (UART_STATUS_REG1 & (1 << UART_RECEIVE_COMPLETE1))) break;
+		else if ((selectedSerial == 1) && Serial_Available(1))
+			break;
 #endif
 		count++;
 		if (count > MAX_TIME_COUNT)
 		{
 		uint16_t data;
 		#if (FLASHEND > 0x10000)
-			data	=	pgm_read_word_far(0);	//*	get the first word of the user program
+			data = pgm_read_word_far(0); // get the first word of the user program
 		#else
-			data	=	pgm_read_word_near(0);	//*	get the first word of the user program
+			data = pgm_read_word_near(0); // get the first word of the user program
 		#endif
-			if (data != 0xffff)					//*	make sure its valid before jumping to it.
+			if (data != 0xffff) // make sure its valid before jumping to it.
 			{
 				jumpToUserSpace();
 			}
-			count	=	0;
+			count = 0;
 		}
 	}
-	if (selectedSerial == 0) return UART_DATA_REG;
+	if (selectedSerial == 0)
+		return UART_DATA_REG;
 #ifdef DUALSERIAL
-	else if (selectedSerial == 1) return UART_DATA_REG1;
+	else if (selectedSerial == 1) 
+		return UART_DATA_REG1;
 #endif
 	return 0;
 }
@@ -326,18 +322,18 @@ void initUart(void)
 {
 	// init uart0
 #if UART_BAUDRATE_DOUBLE_SPEED
-	UART_STATUS_REG |= (1 <<UART_DOUBLE_SPEED);
+	UART_STATUS_REG |= _BV(UART_DOUBLE_SPEED);
 #endif
 	UART_BAUD_RATE_LOW = UART_BAUD_SELECT(BAUDRATE,F_CPU);
-	UART_CONTROL_REG = (1 << UART_ENABLE_RECEIVER) | (1 << UART_ENABLE_TRANSMITTER);
+	UART_CONTROL_REG = _BV(UART_ENABLE_RECEIVER) | _BV(UART_ENABLE_TRANSMITTER);
 
 #ifdef DUALSERIAL
 	// init uart1
 #if UART_BAUDRATE_DOUBLE_SPEED
-	UART_STATUS_REG1 |= (1 <<UART_DOUBLE_SPEED1);
+	UART_STATUS_REG1 |= _BV(UART_DOUBLE_SPEED1);
 #endif
 	UART_BAUD_RATE_LOW1 = UART_BAUD_SELECT(BAUDRATE,F_CPU);
-	UART_CONTROL_REG1 = (1 << UART_ENABLE_RECEIVER1) | (1 << UART_ENABLE_TRANSMITTER1);
+	UART_CONTROL_REG1 = _BV(UART_ENABLE_RECEIVER1) | _BV(UART_ENABLE_TRANSMITTER1);
 #endif //DUALSERIAL
 }
 
@@ -358,9 +354,6 @@ void pinsToDefaultState(void)
 	PORTH |= 0b00101000; //PH5, PH3 = 1
 }
 #endif //EINSYBOARD
-
-//*	for watch dog timer startup
-//void (*app_start)(void) = 0x0000;
 
 uint32_t flashSize = 0; //flash data size in bytes
 uint32_t flashCounter = 0; //flash counter (readed / written bytes)
@@ -400,7 +393,7 @@ int main(void)
 	uint8_t boot_state = 0;
 
 	uint8_t mcuStatusReg;
-	mcuStatusReg	=	MCUSR;
+	mcuStatusReg = MCUSR;
 	MCUSR = 0;
 	wdt_disable();
 	// check if WDT generated the reset, if so, go straight to app
@@ -431,7 +424,7 @@ int main(void)
 						else
 							word = *((uint16_t*)((uint16_t)boot_src_addr)); //from RAM
 						boot_page_fill(address, word);
-						address	+= 2;
+						address += 2;
 						boot_src_addr += 2;
 						if (boot_copy_size > 2)
 							boot_copy_size -= 2;
@@ -444,7 +437,7 @@ int main(void)
 				}
 				else
 				{
-					address	+= SPM_PAGESIZE;
+					address += SPM_PAGESIZE;
 					if (boot_copy_size > SPM_PAGESIZE)
 						boot_copy_size -= SPM_PAGESIZE;
 					else
@@ -459,19 +452,13 @@ int main(void)
 
 
 #ifndef REMOVE_BOOTLOADER_LED
-	/* PROG_PIN pulled low, indicate with LED that bootloader is active */
-	PROGLED_DDR		|=	(1<<PROGLED_PIN);
-//	PROGLED_PORT	&=	~(1<<PROGLED_PIN);	// active low LED ON
-	PROGLED_PORT	|=	(1<<PROGLED_PIN);	// active high LED ON
-
-
+	// PROGLED_PIN pulled high, indicate with LED that bootloader is active
+	PROGLED_DDR |= _BV(PROGLED_PIN);
+//	PROGLED_PORT &= ~_BV(PROGLED_PIN); // active low LED ON
+	PROGLED_PORT |= _BV(PROGLED_PIN); // active high LED ON
 #endif
 
-	/*
-	 * Init UART
-	 * set baudrate and enable USART receiver and transmiter without interrupts
-	 */
-	initUart();
+	initUart(); // Set baudrate and enable USART receiver and transmiter without interrupts
 
 #ifdef EINSYBOARD
 	pinsToDefaultState();
@@ -495,7 +482,7 @@ int main(void)
 
 	while (boot_state==0)
 	{
-		while ((!(Serial_Available(0))) && (!(Serial_Available(1))) && (boot_state == 0))		// wait for data
+		while ((!(Serial_Available(0))) && (!(Serial_Available(1))) && (boot_state == 0)) // wait for data
 		{
 			_delay_ms(0.001);
 			boot_timer++;
@@ -506,7 +493,7 @@ int main(void)
 		#if defined(BLINK_LED_WHILE_WAITING) && !defined(REMOVE_BOOTLOADER_LED)
 			if ((boot_timer % _BLINK_LOOP_COUNT_) == 0)
 			{
-				PROGLED_PORT ^= (1 << PROGLED_PIN); // toggle the LED
+				PROGLED_RPORT |= _BV(PROGLED_PIN); // toggle the LED
 			}
 		#endif
 		}
@@ -519,99 +506,97 @@ int main(void)
 
 	if (boot_state==1)
 	{
-		//*	main loop
+		// main loop
 		while (!isLeave)
 		{
-			/*
-			 * Collect received bytes to a complete message
-			 */
-			msgParseState	=	ST_START;
-			while ( msgParseState != ST_PROCESS )
+			// Collect received bytes to a complete message
+			msgParseState = ST_START;
+			while (msgParseState != ST_PROCESS)
 			{
-				if (boot_state==1)
+				if (boot_state == 1)
 				{
-					boot_state	=	0;
-					c			=	UART_DATA_REG;
+					boot_state = 0;
+					c = UART_DATA_REG;
 				}
 				else
 				{
-					c	=	recchar_timeout();
+					c = recchar_timeout();
 				}
 
 
 				switch (msgParseState)
 				{
-					case ST_START:
-						if ( c == MESSAGE_START )
-						{
-							msgParseState	=	ST_GET_SEQ_NUM;
-							checksum		=	MESSAGE_START^0;
-						}
-						break;
+				case ST_START:
+					if (c == MESSAGE_START)
+					{
+						msgParseState = ST_GET_SEQ_NUM;
+						checksum = MESSAGE_START;
+					}
+					break;
 
-					case ST_GET_SEQ_NUM:
-						seqNum			=	c;
-						msgParseState	=	ST_MSG_SIZE_1;
-						checksum		^=	c;
-						break;
+				case ST_GET_SEQ_NUM:
+					seqNum = c;
+					msgParseState = ST_MSG_SIZE_1;
+					checksum ^= c;
+					break;
 
-					case ST_MSG_SIZE_1:
-						msgLength		=	c<<8;
-						msgParseState	=	ST_MSG_SIZE_2;
-						checksum		^=	c;
-						break;
+				case ST_MSG_SIZE_1:
+					msgLength = c << 8;
+					msgParseState = ST_MSG_SIZE_2;
+					checksum ^= c;
+					break;
 
-					case ST_MSG_SIZE_2:
-						msgLength		|=	c;
-						msgParseState	=	ST_GET_TOKEN;
-						checksum		^=	c;
-						break;
+				case ST_MSG_SIZE_2:
+					msgLength |= c;
+					msgParseState = ST_GET_TOKEN;
+					checksum ^= c;
+					break;
 
-					case ST_GET_TOKEN:
-						if ( c == TOKEN )
-						{
-							msgParseState	=	ST_GET_DATA;
-							checksum		^=	c;
-							ii				=	0;
-						}
-						else
-						{
-							msgParseState	=	ST_START;
-						}
-						break;
+				case ST_GET_TOKEN:
+					if (c == TOKEN)
+					{
+						msgParseState = ST_GET_DATA;
+						checksum ^= c;
+						ii = 0;
+					}
+					else
+					{
+						msgParseState = ST_START;
+					}
+					break;
 
-					case ST_GET_DATA:
-						msgBuffer[ii++]	=	c;
-						checksum		^=	c;
-						if (ii == msgLength )
-						{
-							msgParseState	=	ST_GET_CHECK;
-						}
-						break;
+				case ST_GET_DATA:
+					msgBuffer[ii++] = c;
+					checksum ^= c;
+					if (ii == msgLength)
+					{
+						msgParseState = ST_GET_CHECK;
+					}
+					break;
 
-					case ST_GET_CHECK:
-						if ( c == checksum )
-						{
-							msgParseState	=	ST_PROCESS;
-						}
-						else
-						{
-							msgParseState	=	ST_START;
-						}
-						break;
-				}	//	switch
-			}	//	while(msgParseState)
+				case ST_GET_CHECK:
+					if (c == checksum)
+					{
+						msgParseState = ST_PROCESS;
+					}
+					else
+					{
+						msgParseState = ST_START;
+					}
+					break;
+				}
+			}
 
 #ifdef LCD_HD44780
-            if (messageShown == 0)
+			if (messageShown == 0)
 			{
-			    lcd_clrscr();
-                lcd_goto(20);
-                lcd_puts(" Do not disconnect!");
-                lcd_goto(45);
-                lcd_puts(" Upgrading firmware");
-                messageShown = 1;
-            }
+				lcd_clrscr();
+				lcd_goto(20);
+				lcd_puts(" Do not disconnect!");
+				lcd_goto(45);
+				lcd_puts(" Upgrading firmware");
+				messageShown = 1;
+			}
 #endif //LCD_HD44780
 
 #ifdef LCD_HD44780_ANIMATION
@@ -622,10 +607,11 @@ int main(void)
 				{
 					animationTimer = 0;
 					animationFrame++;
-					if (animationFrame > 5) animationFrame = 0;
+					if (animationFrame > 5)
+						animationFrame = 0;
 					lcd_goto(91);
 					lcd_puts("|    |");
-					lcd_goto((animationFrame <= 3)?(92 + animationFrame):(98 - animationFrame));
+					lcd_goto((animationFrame <= 3) ? (92 + animationFrame) : (98 - animationFrame));
 					lcd_putc('*');
 				}
 			}
@@ -659,9 +645,7 @@ int main(void)
 			}
 #endif //LCD_HD44780_COUNTER
 
-			/*
-			 * Now process the STK500 commands, see Atmel Appnote AVR068
-			 */
+			// Now process the STK500 commands, see Atmel Appnote AVR068
 
 			switch (msgBuffer[0])
 			{
@@ -669,17 +653,16 @@ int main(void)
 				case CMD_SPI_MULTI:
 					{
 						uint8_t answerByte;
-						uint8_t flag=0;
 
-						if ( msgBuffer[4]== 0x30 )
+						if (msgBuffer[4] == 0x30)
 						{
-							uint8_t signatureIndex	=	msgBuffer[6];
+							uint8_t signatureIndex = msgBuffer[6];
 
-							if ( signatureIndex == 0 )
+							if (signatureIndex == 0)
 							{
 								answerByte = SIGNATURE_0;
 							}
-							else if ( signatureIndex == 1 )
+							else if (signatureIndex == 1)
 							{
 								answerByte = SIGNATURE_1;
 							}
@@ -697,46 +680,44 @@ int main(void)
 						//	answerByte	=	boot_lock_fuse_bits_get(GET_EXTENDED_FUSE_BITS);
 							if (msgBuffer[4] == 0x50)
 							{
-								answerByte	=	boot_lock_fuse_bits_get(GET_LOW_FUSE_BITS);
+								answerByte = boot_lock_fuse_bits_get(GET_LOW_FUSE_BITS);
 							}
 							else if (msgBuffer[4] == 0x58)
 							{
-								answerByte	=	boot_lock_fuse_bits_get(GET_HIGH_FUSE_BITS);
+								answerByte = boot_lock_fuse_bits_get(GET_HIGH_FUSE_BITS);
 							}
 							else
 							{
-								answerByte	=	0;
+								answerByte = 0;
 							}
 						}
 						else
 						{
-							answerByte	=	0; // for all others command are not implemented, return dummy value for AVRDUDE happy <Worapoht>
+							answerByte = 0; // for all others command are not implemented, return dummy value for AVRDUDE happy <Worapoht>
 						}
-						if ( !flag )
-						{
-							msgLength		=	7;
-							msgBuffer[1]	=	STATUS_CMD_OK;
-							msgBuffer[2]	=	0;
-							msgBuffer[3]	=	msgBuffer[4];
-							msgBuffer[4]	=	0;
-							msgBuffer[5]	=	answerByte;
-							msgBuffer[6]	=	STATUS_CMD_OK;
-						}
+
+						msgLength = 7;
+						msgBuffer[1] = STATUS_CMD_OK;
+						msgBuffer[2] = 0;
+						msgBuffer[3] = msgBuffer[4];
+						msgBuffer[4] = 0;
+						msgBuffer[5] = answerByte;
+						msgBuffer[6] = STATUS_CMD_OK;
 					}
 					break;
 	#endif
 				case CMD_SIGN_ON:
-					msgLength		=	11;
-					msgBuffer[1] 	=	STATUS_CMD_OK;
-					msgBuffer[2] 	=	8;
-					msgBuffer[3] 	=	'A';
-					msgBuffer[4] 	=	'V';
-					msgBuffer[5] 	=	'R';
-					msgBuffer[6] 	=	'I';
-					msgBuffer[7] 	=	'S';
-					msgBuffer[8] 	=	'P';
-					msgBuffer[9] 	=	'_';
-					msgBuffer[10]	=	'2';
+					msgLength = 11;
+					msgBuffer[1] = STATUS_CMD_OK;
+					msgBuffer[2] = 8;
+					msgBuffer[3] = 'A';
+					msgBuffer[4] = 'V';
+					msgBuffer[5] = 'R';
+					msgBuffer[6] = 'I';
+					msgBuffer[7] = 'S';
+					msgBuffer[8] = 'P';
+					msgBuffer[9] = '_';
+					msgBuffer[10] = '2';
 					break;
 
 				case CMD_GET_PARAMETER:
@@ -746,27 +727,27 @@ int main(void)
 						switch(msgBuffer[1])
 						{
 						case PARAM_BUILD_NUMBER_LOW:
-							value	=	CONFIG_PARAM_BUILD_NUMBER_LOW;
+							value = CONFIG_PARAM_BUILD_NUMBER_LOW;
 							break;
 						case PARAM_BUILD_NUMBER_HIGH:
-							value	=	CONFIG_PARAM_BUILD_NUMBER_HIGH;
+							value = CONFIG_PARAM_BUILD_NUMBER_HIGH;
 							break;
 						case PARAM_HW_VER:
-							value	=	CONFIG_PARAM_HW_VER;
+							value = CONFIG_PARAM_HW_VER;
 							break;
 						case PARAM_SW_MAJOR:
-							value	=	CONFIG_PARAM_SW_MAJOR;
+							value = CONFIG_PARAM_SW_MAJOR;
 							break;
 						case PARAM_SW_MINOR:
-							value	=	CONFIG_PARAM_SW_MINOR;
+							value = CONFIG_PARAM_SW_MINOR;
 							break;
 						default:
-							value	=	0;
+							value = 0;
 							break;
 						}
-						msgLength		=	3;
-						msgBuffer[1]	=	STATUS_CMD_OK;
-						msgBuffer[2]	=	value;
+						msgLength = 3;
+						msgBuffer[1] = STATUS_CMD_OK;
+						msgBuffer[2] = value;
 					}
 					break;
 
@@ -776,70 +757,70 @@ int main(void)
 
 				case CMD_SET_PARAMETER:
 				case CMD_ENTER_PROGMODE_ISP:
-					msgLength		=	2;
-					msgBuffer[1]	=	STATUS_CMD_OK;
+					msgLength = 2;
+					msgBuffer[1] = STATUS_CMD_OK;
 					break;
 
 				case CMD_READ_SIGNATURE_ISP:
 					{
-						uint8_t signatureIndex	=	msgBuffer[4];
+						uint8_t signatureIndex = msgBuffer[4];
 						uint8_t signature;
 
-						if ( signatureIndex == 0 )
+						if (signatureIndex == 0)
 							signature = SIGNATURE_0;
-						else if ( signatureIndex == 1 )
+						else if (signatureIndex == 1)
 							signature = SIGNATURE_1;
 						else
 							signature = SIGNATURE_2;
 
-						msgLength		=	4;
-						msgBuffer[1]	=	STATUS_CMD_OK;
-						msgBuffer[2]	=	signature;
-						msgBuffer[3]	=	STATUS_CMD_OK;
+						msgLength = 4;
+						msgBuffer[1] = STATUS_CMD_OK;
+						msgBuffer[2] = signature;
+						msgBuffer[3] = STATUS_CMD_OK;
 					}
 					break;
 
 				case CMD_READ_LOCK_ISP:
-					msgLength		=	4;
-					msgBuffer[1]	=	STATUS_CMD_OK;
-					msgBuffer[2]	=	boot_lock_fuse_bits_get( GET_LOCK_BITS );
-					msgBuffer[3]	=	STATUS_CMD_OK;
+					msgLength = 4;
+					msgBuffer[1] = STATUS_CMD_OK;
+					msgBuffer[2] = boot_lock_fuse_bits_get(GET_LOCK_BITS);
+					msgBuffer[3] = STATUS_CMD_OK;
 					break;
 
 				case CMD_READ_FUSE_ISP:
 					{
 						uint8_t fuseBits;
 
-						if ( msgBuffer[2] == 0x50 )
+						if (msgBuffer[2] == 0x50)
 						{
-							if ( msgBuffer[3] == 0x08 )
-								fuseBits	=	boot_lock_fuse_bits_get( GET_EXTENDED_FUSE_BITS );
+							if (msgBuffer[3] == 0x08)
+								fuseBits = boot_lock_fuse_bits_get(GET_EXTENDED_FUSE_BITS);
 							else
-								fuseBits	=	boot_lock_fuse_bits_get( GET_LOW_FUSE_BITS );
+								fuseBits = boot_lock_fuse_bits_get(GET_LOW_FUSE_BITS);
 						}
 						else
 						{
-							fuseBits	=	boot_lock_fuse_bits_get( GET_HIGH_FUSE_BITS );
+							fuseBits = boot_lock_fuse_bits_get(GET_HIGH_FUSE_BITS);
 						}
-						msgLength		=	4;
-						msgBuffer[1]	=	STATUS_CMD_OK;
-						msgBuffer[2]	=	fuseBits;
-						msgBuffer[3]	=	STATUS_CMD_OK;
+						msgLength = 4;
+						msgBuffer[1] = STATUS_CMD_OK;
+						msgBuffer[2] = fuseBits;
+						msgBuffer[3] = STATUS_CMD_OK;
 					}
 					break;
 
 	#ifndef REMOVE_PROGRAM_LOCK_BIT_SUPPORT
 				case CMD_PROGRAM_LOCK_ISP:
 					{
-						uint8_t lockBits	=	msgBuffer[4];
+						uint8_t lockBits = msgBuffer[4];
 
-						lockBits	=	(~lockBits) & 0x3C;	// mask BLBxx bits
-						boot_lock_bits_set(lockBits);		// and program it
+						lockBits = (~lockBits) & 0x3C; // mask BLBxx bits
+						boot_lock_bits_set(lockBits); // and program it
 						boot_spm_busy_wait();
 
-						msgLength		=	3;
-						msgBuffer[1]	=	STATUS_CMD_OK;
-						msgBuffer[2]	=	STATUS_CMD_OK;
+						msgLength = 3;
+						msgBuffer[1] = STATUS_CMD_OK;
+						msgBuffer[2] = STATUS_CMD_OK;
 					}
 					break;
 	#endif
@@ -849,22 +830,23 @@ int main(void)
 						msgLength = 2;
 						while (eraseAddress < BOOTLOADER_ADDRESS)
 						{
-							boot_page_erase(eraseAddress);	// Perform page erase
-							boot_spm_busy_wait();		// Wait until the memory is erased.
-							eraseAddress += SPM_PAGESIZE;	// point to next page to be erase
+							boot_page_erase(eraseAddress); // Perform page erase
+							boot_spm_busy_wait(); // Wait until the memory is erased.
+							eraseAddress += SPM_PAGESIZE; // point to next page to be erase
 						}
-						msgBuffer[1]	=	STATUS_CMD_OK;
+						boot_rww_enable(); // Re-enable the RWW section
+						msgBuffer[1] = STATUS_CMD_OK;
 					}
 					break;
 
 				case CMD_LOAD_ADDRESS:
-	#if defined(RAMPZ)
-					address	=	( ((address_t)(msgBuffer[1])<<24)|((address_t)(msgBuffer[2])<<16)|((address_t)(msgBuffer[3])<<8)|(msgBuffer[4]) )<<1;
+	#if (FLASHEND > 0x10000)
+					address	= (((address_t)(msgBuffer[1]) << 24) | ((address_t)(msgBuffer[2]) << 16) | ((address_t)(msgBuffer[3]) << 8) | msgBuffer[4]) << 1;
 	#else
-					address	=	( ((msgBuffer[3])<<8)|(msgBuffer[4]) )<<1;		//convert word to byte address
+					address	= ((msgBuffer[3] << 8) | msgBuffer[4]) << 1; //convert word to byte address
 	#endif
-					msgLength		=	2;
-					msgBuffer[1]	=	STATUS_CMD_OK;
+					msgLength = 2;
+					msgBuffer[1] = STATUS_CMD_OK;
 					break;
 
 				case CMD_SET_UPLOAD_SIZE_PRUSA3D:
@@ -872,21 +854,21 @@ int main(void)
 					((uint8_t*)&flashSize)[1] = msgBuffer[2];
 					((uint8_t*)&flashSize)[2] = msgBuffer[3];
 					((uint8_t*)&flashSize)[3] = 0;
-					msgLength		=	2;
-					msgBuffer[1]	=	STATUS_CMD_OK;
+					msgLength = 2;
+					msgBuffer[1] = STATUS_CMD_OK;
 					break;
 
 				case CMD_PROGRAM_FLASH_ISP:
 				case CMD_PROGRAM_EEPROM_ISP:
 					{
-						uint16_t size = ((msgBuffer[1])<<8) | msgBuffer[2];
-						uint8_t *p = msgBuffer+10;
+						uint16_t size = (msgBuffer[1] << 8) | msgBuffer[2];
+						uint8_t *p = msgBuffer + 10;
 						uint16_t data;
 						uint8_t highByte, lowByte;
 						address_t tempaddress = address;
 
 
-						if ( msgBuffer[0] == CMD_PROGRAM_FLASH_ISP )
+						if (msgBuffer[0] == CMD_PROGRAM_FLASH_ISP)
 						{
 							if (flashSize != 0)
 							{
@@ -904,42 +886,44 @@ int main(void)
 							// erase only main section (bootloader protection)
 							if (eraseAddress < BOOTLOADER_ADDRESS ) //erase and write only blocks with address less 0x3e000
 							{ //because prevent "brick"
-									boot_page_erase(eraseAddress);	// Perform page erase
-									boot_spm_busy_wait();		// Wait until the memory is erased.
-									eraseAddress += SPM_PAGESIZE;	// point to next page to be erase
+								boot_page_erase(eraseAddress); // Perform page erase
+								boot_spm_busy_wait(); // Wait until the memory is erased.
+								eraseAddress += SPM_PAGESIZE; // point to next page to be erase
 							}
 							if (address < BOOTLOADER_ADDRESS)
 							{
-								/* Write FLASH */
-								do {
-									lowByte		=	*p++;
-									highByte 	=	*p++;
+								// Write FLASH
+								do
+								{
+									lowByte = *p++;
+									highByte = *p++;
 
-									data		=	(highByte << 8) | lowByte;
+									data = (highByte << 8) | lowByte;
 									boot_page_fill(address,data);
 
-									address	=	address + 2;	// Select next word in memory
-									size	-=	2;				// Reduce number of bytes to write by two
-								} while (size);					// Loop until all bytes written
+									address = address + 2; // Select next word in memory
+									size -= 2; // Reduce number of bytes to write by two
+								} while (size); // Loop until all bytes written
 
 								boot_page_write(tempaddress);
 								boot_spm_busy_wait();
-								boot_rww_enable();				// Re-enable the RWW section
+								boot_rww_enable(); // Re-enable the RWW section
 							}
 						}
 						else
 						{
+							// write EEPROM
 							uint16_t ii = address >> 1;
-							/* write EEPROM */
-							while (size) {
+							while (size)
+							{
 								eeprom_write_byte((uint8_t*)ii, *p++);
-								address+=2;						// Select next EEPROM byte
+								address += 2; // Select next EEPROM byte
 								ii++;
 								size--;
 							}
 						}
-						msgLength		=	2;
-						msgBuffer[1]	=	STATUS_CMD_OK;
+						msgLength = 2;
+						msgBuffer[1] = STATUS_CMD_OK;
 
 					}
 					break;
@@ -948,8 +932,8 @@ int main(void)
 				case CMD_READ_EEPROM_ISP:
 					{
 						uint16_t size = ((msgBuffer[1])<<8) | msgBuffer[2];
-						uint8_t *p = msgBuffer+1;
-						msgLength = size+3;
+						uint8_t *p = msgBuffer + 1;
+						msgLength = size + 3;
 
 						*p++ = STATUS_CMD_OK;
 						if (msgBuffer[0] == CMD_READ_FLASH_ISP )
@@ -968,31 +952,31 @@ int main(void)
 							uint16_t data;
 
 							// Read FLASH
-							do {
-						//#if defined(RAMPZ)
+							do
+							{
 						#if (FLASHEND > 0x10000)
 								data = pgm_read_word_far(address);
 						#else
 								data = pgm_read_word_near(address);
 						#endif
-								*p++ = (uint8_t)data;		//LSB
-								*p++ = (uint8_t)(data >> 8);	//MSB
-								address += 2;							// Select next word in memory
+								*p++ = (uint8_t)data; // LSB
+								*p++ = (uint8_t)(data >> 8); // MSB
+								address += 2; // Select next word in memory
 								size -= 2;
-							}while (size);
+							} while (size);
 						}
 						else
 						{
 							// Read EEPROM
 							uint16_t ii = address >> 1;
-							do {
-								EEARL = ii;			// Setup EEPROM address
+							do
+							{
+								EEARL = ii; // Setup EEPROM address
 								EEARH = ((ii >> 8));
 								address += 2; // Select next EEPROM byte
 								ii++;
-
-								EECR |= (1<<EERE);			// Read EEPROM
-								*p++ = EEDR;				// Send EEPROM data
+								EECR |= _BV(EERE); // Read EEPROM
+								*p++ = EEDR; // Send EEPROM data
 								size--;
 							} while (size);
 						}
@@ -1008,16 +992,16 @@ int main(void)
 
 			// Now send answer message back
 			sendchar(MESSAGE_START);
-			checksum = MESSAGE_START^0;
+			checksum = MESSAGE_START;
 
 			sendchar(seqNum);
 			checksum ^= seqNum;
 
-			c = ((msgLength>>8)&0xFF);
+			c = ((msgLength >> 8) & 0xFF);
 			sendchar(c);
 			checksum ^= c;
 
-			c = msgLength&0x00FF;
+			c = msgLength & 0x00FF;
 			sendchar(c);
 			checksum ^= c;
 
@@ -1025,50 +1009,44 @@ int main(void)
 			checksum ^= TOKEN;
 
 			p = msgBuffer;
-			while ( msgLength )
+			while (msgLength)
 			{
 				c = *p++;
 				sendchar(c);
-				checksum ^=c;
+				checksum ^= c;
 				msgLength--;
 			}
 			sendchar(checksum);
 			seqNum++;
 	
 		#ifndef REMOVE_BOOTLOADER_LED
-			PROGLED_PORT ^= (1<<PROGLED_PIN); // toggle the LED
+			PROGLED_RPORT |= _BV(PROGLED_PIN); // toggle the LED
 		#endif
-
 		}
 	}
 
 
-
+	exit: // Now leave bootloader
 
 #ifndef REMOVE_BOOTLOADER_LED
-	PROGLED_DDR &= ~(1<<PROGLED_PIN);	// set to default
-	PROGLED_PORT &= ~(1<<PROGLED_PIN);	// set to default
-	delay_ms(100);							// delay after exit
+	PROGLED_DDR &= ~_BV(PROGLED_PIN); // set to default
+	PROGLED_PORT &= ~_BV(PROGLED_PIN); // set to default
+	delay_ms(100); // delay after exit
 #endif
-
-exit:
-	// Now leave bootloader
 
 #if UART_BAUDRATE_DOUBLE_SPEED
-	UART_STATUS_REG &= ~(1 << UART_DOUBLE_SPEED);
+	UART_STATUS_REG &= ~_BV(UART_DOUBLE_SPEED);
 #ifdef DUALSERIAL
-	UART_STATUS_REG1 &= ~(1 << UART_DOUBLE_SPEED1);
+	UART_STATUS_REG1 &= ~_BV(UART_DOUBLE_SPEED1);
 #endif
 #endif
 
-
-	boot_rww_enable();				// enable application section
+	boot_rww_enable(); // enable application section
 	jumpToUserSpace();
 
-	 /*
-	 * Never return to stop GCC to generate exit return code
-	 * Actually we will never reach this point, but the compiler doesn't
-	 * understand this
-	 */
+	// Never return to stop GCC to generate exit return code
+	// Actually we will never reach this point, but the compiler doesn't
+	// understand this
+	
 	for(;;);
 }
