@@ -929,7 +929,6 @@ int main(void)
 						}
 						else
 						{
-							//*	issue 543, this should work, It has not been tested.
 							uint16_t ii = address >> 1;
 							/* write EEPROM */
 							while (size) {
@@ -987,13 +986,13 @@ int main(void)
 							// Read EEPROM
 							uint16_t ii = address >> 1;
 							do {
-								EEARL	=	ii;			// Setup EEPROM address
-								EEARH	=	((ii >> 8));
+								EEARL = ii;			// Setup EEPROM address
+								EEARH = ((ii >> 8));
 								address += 2; // Select next EEPROM byte
 								ii++;
 
-								EECR	|=	(1<<EERE);			// Read EEPROM
-								*p++	=	EEDR;				// Send EEPROM data
+								EECR |= (1<<EERE);			// Read EEPROM
+								*p++ = EEDR;				// Send EEPROM data
 								size--;
 							} while (size);
 						}
