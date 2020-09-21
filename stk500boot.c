@@ -824,7 +824,7 @@ int main(void)
 					}
 					break;
 	#endif
-				case CMD_CHIP_ERASE_ISP:
+				case CMD_CHIP_ERASE_ISP: //clear both RWW flash and EEPROM
 					{
 						eraseAddress = 0;
 						msgLength = 2;
@@ -835,6 +835,9 @@ int main(void)
 							eraseAddress += SPM_PAGESIZE; // point to next page to be erase
 						}
 						boot_rww_enable(); // Re-enable the RWW section
+						for (uint16_t i = 0; i < E2END; i++)
+							eeprom_update_byte((uint8_t*)i, 0xFF);
+						eeprom_busy_wait(); //wait for eeprom operations to complete
 						msgBuffer[1] = STATUS_CMD_OK;
 					}
 					break;
@@ -913,14 +916,10 @@ int main(void)
 						else
 						{
 							// write EEPROM
-							uint16_t ii = address >> 1;
-							while (size)
-							{
-								eeprom_write_byte((uint8_t*)ii, *p++);
-								address += 2; // Select next EEPROM byte
-								ii++;
-								size--;
-							}
+							eeprom_update_block(p, (uint8_t*)((uint16_t)(address) >> 1), size);
+							address += size * 2;
+							p += size;
+							eeprom_busy_wait(); //wait for eeprom operations to complete
 						}
 						msgLength = 2;
 						msgBuffer[1] = STATUS_CMD_OK;
@@ -968,17 +967,9 @@ int main(void)
 						else
 						{
 							// Read EEPROM
-							uint16_t ii = address >> 1;
-							do
-							{
-								EEARL = ii; // Setup EEPROM address
-								EEARH = ((ii >> 8));
-								address += 2; // Select next EEPROM byte
-								ii++;
-								EECR |= _BV(EERE); // Read EEPROM
-								*p++ = EEDR; // Send EEPROM data
-								size--;
-							} while (size);
+							eeprom_read_block((uint8_t*)p, (uint8_t*)((uint16_t)(address) >> 1), size);
+							address += size * 2;
+							p += size;
 						}
 						*p++ = STATUS_CMD_OK;
 					}
