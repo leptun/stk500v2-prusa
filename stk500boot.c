@@ -870,9 +870,9 @@ int main(void)
 						uint8_t highByte, lowByte;
 						address_t tempaddress = address;
 
-
 						if (msgBuffer[0] == CMD_PROGRAM_FLASH_ISP)
 						{
+							// Write FLASH
 							if (flashSize != 0)
 							{
 								if (address == 0) //first page
@@ -887,30 +887,58 @@ int main(void)
 							}
 
 							// erase only main section (bootloader protection)
-							if (eraseAddress < BOOTLOADER_ADDRESS ) //erase and write only blocks with address less 0x3e000
-							{ //because prevent "brick"
-								boot_page_erase(eraseAddress); // Perform page erase
-								boot_spm_busy_wait(); // Wait until the memory is erased.
-								eraseAddress += SPM_PAGESIZE; // point to next page to be erase
-							}
+							// if (eraseAddress < BOOTLOADER_ADDRESS ) //erase and write only blocks with address less 0x3e000
+							// { //because prevent "brick"
+								// boot_page_erase(eraseAddress); // Perform page erase
+								// boot_spm_busy_wait(); // Wait until the memory is erased.
+								// eraseAddress += SPM_PAGESIZE; // point to next page to be erase
+							// }
 							if (address < BOOTLOADER_ADDRESS)
 							{
-								// Write FLASH
-								do
+								uint8_t skipFlash = 1;
+								uint16_t existingData;
+								uint8_t* _p = p;
+								for (uint16_t i = 0; i < size; i += 2)
 								{
-									lowByte = *p++;
-									highByte = *p++;
+#if (FLASHEND > 0x10000)
+									existingData = pgm_read_word_far(address + i);
+#else
+									existingData = pgm_read_word_near(address + i);
+#endif
+									lowByte = *_p++;
+									highByte = *_p++;
 
 									data = (highByte << 8) | lowByte;
-									boot_page_fill(address,data);
+									if (existingData != data)
+									{
+										skipFlash = 0;
+										if (address + SPM_PAGESIZE > eraseAddress)
+										{
+											boot_page_erase(address); // Perform page erase
+											boot_spm_busy_wait(); // Wait until the memory is erased.
+										}
+										break;
+									}
+								}
+								
+								if (!skipFlash)
+								{
+									do
+									{
+										lowByte = *p++;
+										highByte = *p++;
 
-									address = address + 2; // Select next word in memory
-									size -= 2; // Reduce number of bytes to write by two
-								} while (size); // Loop until all bytes written
+										data = (highByte << 8) | lowByte;
+										boot_page_fill(address,data);
 
-								boot_page_write(tempaddress);
-								boot_spm_busy_wait();
-								boot_rww_enable(); // Re-enable the RWW section
+										address = address + 2; // Select next word in memory
+										size -= 2; // Reduce number of bytes to write by two
+									} while (size); // Loop until all bytes written
+
+									boot_page_write(tempaddress);
+									boot_spm_busy_wait();
+									boot_rww_enable(); // Re-enable the RWW section
+								}
 							}
 						}
 						else
