@@ -835,7 +835,7 @@ int main(void)
 							eraseAddress += SPM_PAGESIZE; // point to next page to be erase
 						}
 						boot_rww_enable(); // Re-enable the RWW section
-						for (uint16_t i = 0; i < E2END; i++)
+						for (uint16_t i = 0; i <= E2END; i++)
 							eeprom_update_byte((uint8_t*)i, 0xFF);
 						eeprom_busy_wait(); //wait for eeprom operations to complete
 						msgBuffer[1] = STATUS_CMD_OK;
