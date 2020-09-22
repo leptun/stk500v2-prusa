@@ -321,17 +321,6 @@ ALL_CFLAGS = -mmcu=$(MCU) -I. $(CFLAGS) $(GENDEPFLAGS)
 ALL_ASFLAGS = -mmcu=$(MCU) -I. -x assembler-with-cpp $(ASFLAGS)
 
 
-
-############################################################
-#	May 25,	2010	<MLS> Adding 1280 support
-#mega1280: MCU = atmega1280
-#mega1280: F_CPU = 16000000
-#mega1280: BOOTLOADER_ADDRESS = 1E000
-#mega1280: CFLAGS += -D_MEGA_BOARD_
-#mega1280: begin gccversion sizebefore build sizeafter end 
-#			mv $(TARGET).hex stk500boot_v2_mega1280.hex
-
-
 ############################################################
 #	Jul 6,	2010	<MLS> Adding 2560 support
 mega2560:	MCU = atmega2560
@@ -340,58 +329,6 @@ mega2560:	BOOTLOADER_ADDRESS = 0x3E000
 mega2560:	CFLAGS += -D_MEGA_BOARD_
 mega2560:	begin gccversion sizebefore build sizeafter end 
 			mv $(TARGET).hex stk500boot_v2_mega2560.hex
-
-
-############################################################
-#Initial config on Amber128 board
-#	avrdude: Device signature = 0x1e9702
-#	avrdude: safemode: lfuse reads as 8F
-#	avrdude: safemode: hfuse reads as CB
-#	avrdude: safemode: efuse reads as FF
-#	Jul 17,	2010	<MLS> Adding 128 support
-############################################################
-amber128: MCU = atmega128
-#amber128: F_CPU = 16000000
-amber128: F_CPU = 14745600
-amber128: BOOTLOADER_ADDRESS = 1E000
-amber128: CFLAGS += -D_BOARD_AMBER128_
-amber128: begin gccversion sizebefore build sizeafter end 
-			mv $(TARGET).hex stk500boot_v2_amber128.hex
-
-############################################################
-#	Aug 23, 2010 	<MLS> Adding atmega2561 support
-m2561: MCU = atmega2561
-m2561: F_CPU = 8000000
-m2561: BOOTLOADER_ADDRESS = 3E000
-m2561: CFLAGS += -D_ANDROID_2561_ -DBAUDRATE=57600
-m2561: begin gccversion sizebefore build sizeafter end 
-			mv $(TARGET).hex stk500boot_v2_android2561.hex
-
-
-############################################################
-#	avrdude: Device signature = 0x1e9801
-#	avrdude: safemode: lfuse reads as EC
-#	avrdude: safemode: hfuse reads as 18
-#	avrdude: safemode: efuse reads as FD
-#	Aug 23,	2010	<MLS> Adding cerebot 2560 @ 8mhz
-#avrdude -P usb -c usbtiny -p m2560 -v -U flash:w:/Arduino/WiringBootV2_upd1/stk500boot_v2_cerebotplus.hex 
-############################################################
-cerebot:	MCU = atmega2560
-cerebot:	F_CPU = 8000000
-cerebot:	BOOTLOADER_ADDRESS = 3E000
-cerebot:	CFLAGS += -D_CEREBOTPLUS_BOARD_ -DBAUDRATE=38400 -DUART_BAUDRATE_DOUBLE_SPEED=1
-cerebot:	begin gccversion sizebefore build sizeafter end 
-			mv $(TARGET).hex stk500boot_v2_cerebotplus.hex
-
-
-############################################################
-#	Aug 23, 2010 	<MLS> Adding atmega2561 support
-penguino: MCU = atmega32
-penguino: F_CPU = 16000000
-penguino: BOOTLOADER_ADDRESS = 7800
-penguino: CFLAGS += -D_PENGUINO_ -DBAUDRATE=57600
-penguino: begin gccversion sizebefore build sizeafter end 
-			mv $(TARGET).hex stk500boot_v2_penguino.hex
 
 
 # Default target.
